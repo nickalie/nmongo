@@ -107,6 +107,19 @@ Use saved configuration:
 nmongo copy
 ```
 
+## MongoDB Client Configuration
+
+The MongoDB client now supports an optional CA certificate file for secure connections. To use this feature, provide the path to the CA certificate file when creating a new client:
+
+```go
+client, err := mongodb.NewClient(ctx, "mongodb://localhost:27017", "/path/to/ca-cert.pem")
+if err != nil {
+    log.Fatalf("Failed to create MongoDB client: %v", err)
+}
+```
+
+If no CA certificate file is provided, the client will connect without additional TLS configuration.
+
 ## Development
 
 ### Testing

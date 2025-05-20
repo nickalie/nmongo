@@ -42,11 +42,11 @@ func TestIndexCopy(t *testing.T) {
 	defer targetMongoClient.Disconnect(ctx)
 
 	// Create our client wrappers
-	sourceClient, err := NewClient(ctx, sourceURI)
+	sourceClient, err := NewClient(ctx, sourceURI, "")
 	require.NoError(t, err, "Failed to connect via client wrapper to source MongoDB")
 	defer sourceClient.Disconnect(ctx)
 
-	targetClient, err := NewClient(ctx, targetURI)
+	targetClient, err := NewClient(ctx, targetURI, "")
 	require.NoError(t, err, "Failed to connect via client wrapper to target MongoDB")
 	defer targetClient.Disconnect(ctx)
 

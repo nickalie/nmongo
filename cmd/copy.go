@@ -15,6 +15,7 @@ import (
 var (
 	sourceURI          string
 	targetURI          string
+	caCertFile         string
 	incremental        bool
 	timeout            int
 	databases          []string
@@ -38,7 +39,7 @@ or exclude specific databases/collections using --exclude-databases and --exclud
 Examples:
   nmongo copy --source "mongodb://source-host:27017" --target "mongodb://target-host:27017" --incremental
   nmongo copy --source "mongodb://source-host:27017" --target "mongodb://target-host:27017" --exclude-databases "admin,local,config"
-  nmongo copy --source "mongodb://source-host:27017" --target "mongodb://target-host:27017" 
+  nmongo copy --source "mongodb://source-host:27017" --target "mongodb://target-host:27017"
     --exclude-collections "system.profile,system.users"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load configuration from file if specified
@@ -54,6 +55,9 @@ Examples:
 			}
 			if targetURI == "" {
 				targetURI = cfg.TargetURI
+			}
+			if caCertFile == "" {
+				caCertFile = cfg.CaCertFile
 			}
 			if !cmd.Flags().Changed("incremental") {
 				incremental = cfg.Incremental
@@ -91,6 +95,7 @@ Examples:
 			cfg := &config.Config{
 				SourceURI:          sourceURI,
 				TargetURI:          targetURI,
+				CaCertFile:         caCertFile,
 				Incremental:        incremental,
 				Timeout:            timeout,
 				Databases:          databases,
@@ -119,13 +124,14 @@ func init() {
 	// Add flags for the copy command
 	copyCmd.Flags().StringVar(&sourceURI, "source", "", "Source MongoDB connection string (required)")
 	copyCmd.Flags().StringVar(&targetURI, "target", "", "Target MongoDB connection string (required)")
+	copyCmd.Flags().StringVar(&caCertFile, "ca-cert-file", "", "Path to CA certificate file for TLS connections")
 	copyCmd.Flags().BoolVar(&incremental, "incremental", false, "Perform incremental copy (only copy new or updated documents)")
 	copyCmd.Flags().IntVar(&timeout, "timeout", 30, "Connection timeout in seconds")
 	copyCmd.Flags().StringSliceVar(&databases, "databases", []string{}, "List of databases to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&collections, "collections", []string{}, "List of collections to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&excludeDatabases, "exclude-databases", []string{}, "List of databases to exclude from copy")
 	copyCmd.Flags().StringSliceVar(&excludeCollections, "exclude-collections", []string{}, "List of collections to exclude from copy")
-	copyCmd.Flags().IntVar(&batchSize, "batch-size", 1000, "Batch size for document operations")
+	copyCmd.Flags().IntVar(&batchSize, "batch-size", 10000, "Batch size for document operations")
 	copyCmd.Flags().StringVar(&lastModifiedField, "last-modified-field", "lastModified",
 		"Field name to use for tracking document modifications in incremental copy")
 
@@ -142,13 +148,13 @@ func runCopy() error {
 	defer cancel()
 
 	// Connect to source MongoDB
-	sourceClient, err := mongodb.NewClient(ctx, sourceURI)
+	sourceClient, err := mongodb.NewClient(ctx, sourceURI, caCertFile)
 	if err != nil {
 		return fmt.Errorf("failed to connect to source MongoDB: %w", err)
 	}
 	defer sourceClient.Disconnect(ctx)
 	// Connect to target MongoDB
-	targetClient, err := mongodb.NewClient(ctx, targetURI)
+	targetClient, err := mongodb.NewClient(ctx, targetURI, caCertFile)
 	if err != nil {
 		return fmt.Errorf("failed to connect to target MongoDB: %w", err)
 	}
@@ -173,17 +179,38 @@ func runCopy() error {
 
 // logCopyConfiguration logs the configuration parameters for the copy operation
 func logCopyConfiguration() {
+	// Log basic configuration
+	logBasicConfig()
+
+	// Log incremental mode configuration
+	logIncrementalConfig()
+
+	// Log database and collection filters
+	logFilterConfig()
+}
+
+// logBasicConfig logs the basic configuration parameters
+func logBasicConfig() {
 	fmt.Println("Starting MongoDB copy operation")
 	fmt.Printf("Source: %s\n", sourceURI)
 	fmt.Printf("Target: %s\n", targetURI)
+	if caCertFile != "" {
+		fmt.Printf("CA Certificate File: %s\n", caCertFile)
+	}
 	fmt.Printf("Incremental mode: %v\n", incremental)
 	fmt.Printf("Batch size: %d\n", batchSize)
 	fmt.Printf("Connection timeout: %d seconds\n", timeout)
+}
 
+// logIncrementalConfig logs the incremental copy configuration
+func logIncrementalConfig() {
 	if incremental && lastModifiedField != "" {
 		fmt.Printf("Last modified field: %s\n", lastModifiedField)
 	}
+}
 
+// logFilterConfig logs the database and collection filter configuration
+func logFilterConfig() {
 	if len(databases) > 0 {
 		fmt.Printf("Included databases: %v\n", databases)
 	}

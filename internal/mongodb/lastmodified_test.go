@@ -29,11 +29,11 @@ func TestIncrementalCopyWithLastModifiedField(t *testing.T) {
 	t.Logf("Target MongoDB URI: %s", targetURI)
 
 	// Connect to MongoDB instances
-	sourceClient, err := NewClient(ctx, sourceURI)
+	sourceClient, err := NewClient(ctx, sourceURI, "")
 	require.NoError(t, err, "Failed to connect to source MongoDB")
 	defer sourceClient.Disconnect(ctx)
 
-	targetClient, err := NewClient(ctx, targetURI)
+	targetClient, err := NewClient(ctx, targetURI, "")
 	require.NoError(t, err, "Failed to connect to target MongoDB")
 	defer targetClient.Disconnect(ctx)
 

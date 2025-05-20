@@ -15,6 +15,7 @@ import (
 type Config struct {
 	SourceURI        string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
 	TargetURI        string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
+	CaCertFile       string   `mapstructure:"caCertFile" json:"caCertFile" yaml:"caCertFile" toml:"caCertFile"`
 	Incremental      bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
 	Timeout          int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
 	Databases        []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
@@ -31,6 +32,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		SourceURI:          "",
 		TargetURI:          "",
+		CaCertFile:         "",
 		Incremental:        false,
 		Timeout:            30,
 		Databases:          []string{},
@@ -51,6 +53,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	// Set default values
 	v.SetDefault("sourceUri", config.SourceURI)
 	v.SetDefault("targetUri", config.TargetURI)
+	v.SetDefault("caCertFile", config.CaCertFile)
 	v.SetDefault("incremental", config.Incremental)
 	v.SetDefault("timeout", config.Timeout)
 	v.SetDefault("databases", config.Databases)
@@ -94,6 +97,7 @@ func SaveConfig(config *Config, filePath string) error {
 	// Set the values from our config
 	v.Set("sourceUri", config.SourceURI)
 	v.Set("targetUri", config.TargetURI)
+	v.Set("caCertFile", config.CaCertFile)
 	v.Set("incremental", config.Incremental)
 	v.Set("timeout", config.Timeout)
 	v.Set("databases", config.Databases)

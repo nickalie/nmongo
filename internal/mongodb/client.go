@@ -4,7 +4,10 @@ package mongodb
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"os"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -13,13 +16,34 @@ import (
 
 // Client represents a MongoDB client wrapper with utilities for copying data
 type Client struct {
-	client *mongo.Client
-	uri    string
+	client     *mongo.Client
+	uri        string
+	caCertFile string
 }
 
 // NewClient creates a new MongoDB client wrapper
-func NewClient(ctx context.Context, uri string) (*Client, error) {
+func NewClient(ctx context.Context, uri, caCertFile string) (*Client, error) {
 	clientOptions := options.Client().ApplyURI(uri)
+
+	// If a CA certificate file is provided, configure TLS
+	if caCertFile != "" {
+		certs, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
+		}
+
+		// Create a TLS configuration with the CA certificate
+		tlsConfig := &tls.Config{}
+		if tlsConfig.RootCAs == nil {
+			tlsConfig.RootCAs = x509.NewCertPool()
+		}
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(certs) {
+			return nil, fmt.Errorf("failed to append CA certificate")
+		}
+
+		clientOptions.SetTLSConfig(tlsConfig)
+	}
+
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -31,8 +55,9 @@ func NewClient(ctx context.Context, uri string) (*Client, error) {
 	}
 
 	return &Client{
-		client: client,
-		uri:    uri,
+		client:     client,
+		uri:        uri,
+		caCertFile: caCertFile,
 	}, nil
 }
 

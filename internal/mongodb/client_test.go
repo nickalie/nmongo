@@ -57,7 +57,7 @@ func TestClient(t *testing.T) {
 	t.Logf("MongoDB URI: %s", uri)
 
 	// Connect to MongoDB
-	client, err := NewClient(ctx, uri)
+	client, err := NewClient(ctx, uri, "")
 	require.NoError(t, err, "Failed to connect to MongoDB")
 	defer client.Disconnect(ctx)
 
