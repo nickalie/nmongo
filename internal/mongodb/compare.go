@@ -18,7 +18,6 @@ type ComparisonResult struct {
 	TargetCount        int64  `json:"targetCount"`
 	Difference         int64  `json:"difference"`
 	MissingInTarget    int64  `json:"missingInTarget"`
-	MissingInSource    int64  `json:"missingInSource"`
 	DifferentDocuments int64  `json:"differentDocuments"`
 	Error              string `json:"error,omitempty"`
 }
@@ -90,14 +89,6 @@ func CompareCollectionData(
 	if err := compareSourceToTarget(opCtx, sourceColl, targetColl, collName, batchSize, detailed, result); err != nil {
 		result.Error = fmt.Sprintf("error comparing source to target: %v", err)
 		return result, fmt.Errorf("%s", result.Error)
-	}
-
-	// Compare target to source (find documents missing in source)
-	if detailed {
-		if err := compareTargetToSource(opCtx, sourceColl, targetColl, collName, batchSize, result); err != nil {
-			result.Error = fmt.Sprintf("error comparing target to source: %v", err)
-			return result, fmt.Errorf("%s", result.Error)
-		}
 	}
 
 	return result, nil
@@ -270,126 +261,6 @@ func shouldUpdateProgress(lastProgressTime time.Time, interval time.Duration) bo
 func updateSourceProgress(collName string, result *DocumentProcessingResult, sourceCount int64) {
 	fmt.Printf("    Compared %d/%d documents in %s\n", result.docCount, sourceCount, collName)
 	fmt.Printf("    Missing in target: %d, Different: %d\n", result.missingInTarget, result.different)
-}
-
-// TargetProcessingResult captures the result of target document processing
-type TargetProcessingResult struct {
-	missingInSource int64
-	docCount        int64
-}
-
-// compareTargetToSource checks for documents in target that don't exist in source
-// This has been refactored to reduce cyclomatic complexity
-func compareTargetToSource(
-	ctx context.Context,
-	sourceColl, targetColl *mongo.Collection,
-	collName string,
-	batchSize int,
-	result *ComparisonResult,
-) error {
-	// Create a cursor for the target collection
-	cursor, err := createTargetCursor(ctx, targetColl, batchSize)
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	return processTargetDocuments(ctx, cursor, sourceColl, collName, result)
-}
-
-// createTargetCursor creates a cursor for the target collection
-func createTargetCursor(
-	ctx context.Context,
-	targetColl *mongo.Collection,
-	batchSize int,
-) (*mongo.Cursor, error) {
-	findOptions := options.Find().SetBatchSize(int32(batchSize))
-	cursor, err := targetColl.Find(ctx, bson.M{}, findOptions)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query target collection: %v", err)
-	}
-	return cursor, nil
-}
-
-// processTargetDocuments processes documents from the target collection
-// This has been refactored to reduce cyclomatic complexity
-func processTargetDocuments(
-	ctx context.Context,
-	cursor *mongo.Cursor,
-	sourceColl *mongo.Collection,
-	collName string,
-	result *ComparisonResult,
-) error {
-	// Initialize tracking variables
-	procResult := TargetProcessingResult{}
-
-	// Progress tracking
-	progressUpdateInterval := 10 * time.Second
-	lastProgressTime := time.Now()
-
-	// Process each document
-	for cursor.Next(ctx) {
-		var doc bson.M
-		if err := cursor.Decode(&doc); err != nil {
-			return fmt.Errorf("failed to decode document: %v", err)
-		}
-
-		procResult.docCount++
-
-		// Check document in source
-		if err := processTargetDocument(ctx, doc, sourceColl, &procResult); err != nil {
-			return err
-		}
-
-		// Provide periodic progress updates
-		if shouldUpdateProgress(lastProgressTime, progressUpdateInterval) {
-			updateTargetProgress(collName, &procResult, result.TargetCount)
-			lastProgressTime = time.Now()
-		}
-	}
-
-	// Check for cursor errors
-	if err := cursor.Err(); err != nil {
-		return fmt.Errorf("cursor error: %v", err)
-	}
-
-	// Update the result with processing data
-	result.MissingInSource = procResult.missingInSource
-
-	return nil
-}
-
-// processTargetDocument processes a single document from the target collection
-func processTargetDocument(
-	ctx context.Context,
-	doc bson.M,
-	sourceColl *mongo.Collection,
-	result *TargetProcessingResult,
-) error {
-	// Check if document exists in source with same _id
-	id, hasID := doc["_id"]
-	if !hasID {
-		return nil
-	}
-
-	// Look up document in source collection
-	var sourceDoc bson.M
-	err := sourceColl.FindOne(ctx, bson.M{"_id": id}).Decode(&sourceDoc)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			result.missingInSource++
-		} else {
-			return fmt.Errorf("error querying source collection for _id %v: %v", id, err)
-		}
-	}
-
-	return nil
-}
-
-// updateTargetProgress updates progress information for target documents
-func updateTargetProgress(collName string, result *TargetProcessingResult, targetCount int64) {
-	fmt.Printf("    Compared %d/%d documents in target collection %s\n", result.docCount, targetCount, collName)
-	fmt.Printf("    Missing in source: %d\n", result.missingInSource)
 }
 
 // bsonEqual compares two BSON documents for equality

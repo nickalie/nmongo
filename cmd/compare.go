@@ -405,7 +405,6 @@ type comparisonStats struct {
 	totalTarget                int64
 	totalDifferent             int64
 	totalMissingInTarget       int64
-	totalMissingInSource       int64
 	collectionsWithDifferences int
 }
 
@@ -417,11 +416,10 @@ func calculateComparisonStats(results []*mongodb.ComparisonResult) comparisonSta
 		stats.totalSource += result.SourceCount
 		stats.totalTarget += result.TargetCount
 		stats.totalMissingInTarget += result.MissingInTarget
-		stats.totalMissingInSource += result.MissingInSource
 		stats.totalDifferent += result.DifferentDocuments
 
 		if result.Difference != 0 || result.MissingInTarget > 0 ||
-			result.MissingInSource > 0 || result.DifferentDocuments > 0 {
+			result.DifferentDocuments > 0 {
 			stats.collectionsWithDifferences++
 		}
 	}
@@ -432,7 +430,6 @@ func calculateComparisonStats(results []*mongodb.ComparisonResult) comparisonSta
 // displayDetailedStats displays detailed comparison statistics
 func displayDetailedStats(stats comparisonStats) {
 	fmt.Printf("Documents missing in target: %d\n", stats.totalMissingInTarget)
-	fmt.Printf("Documents missing in source: %d\n", stats.totalMissingInSource)
 	fmt.Printf("Documents with different content: %d\n", stats.totalDifferent)
 }
 
@@ -443,7 +440,7 @@ func displayDifferences(results []*mongodb.ComparisonResult) {
 
 	for _, result := range results {
 		hasDifference := result.Difference != 0 || result.MissingInTarget > 0 ||
-			result.MissingInSource > 0 || result.DifferentDocuments > 0
+			result.DifferentDocuments > 0
 
 		if hasDifference {
 			fmt.Printf("%s.%s:\n", result.Database, result.Collection)
@@ -451,8 +448,8 @@ func displayDifferences(results []*mongodb.ComparisonResult) {
 				result.SourceCount, result.TargetCount, result.Difference)
 
 			if compareDetailed {
-				fmt.Printf("  Missing in target: %d, Missing in source: %d, Different content: %d\n",
-					result.MissingInTarget, result.MissingInSource, result.DifferentDocuments)
+				fmt.Printf("  Missing in target: %d, Different content: %d\n",
+					result.MissingInTarget, result.DifferentDocuments)
 			}
 		}
 	}

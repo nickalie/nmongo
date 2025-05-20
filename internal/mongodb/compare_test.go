@@ -181,8 +181,8 @@ func TestCompareCollectionData(t *testing.T) {
 	assert.Equal(t, int64(4), result.TargetCount)        // Original 3 + 1 new in target
 	assert.Equal(t, int64(0), result.Difference)         // Same count but different content
 	assert.Equal(t, int64(1), result.MissingInTarget)    // Document 4
-	assert.Equal(t, int64(1), result.MissingInSource)    // Document 5
 	assert.Equal(t, int64(1), result.DifferentDocuments) // Document 2
+	// Note: MissingInSource field was removed as it's no longer calculated
 }
 
 func TestBsonEqual(t *testing.T) {
