@@ -13,6 +13,7 @@ A Go-based CLI tool for MongoDB operations.
 - Include or exclude specific databases and collections
 - Adjustable batch size for optimized performance
 - Save and load configurations from files in multiple formats (JSON, YAML, TOML)
+- Support for secure connections with custom CA certificates
 
 ## Installation
 
@@ -44,8 +45,10 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 
 - `--source`: Source MongoDB connection string (required)
 - `--target`: Target MongoDB connection string (required)
+- `--source-ca-cert-file`: Path to CA certificate file for source MongoDB TLS connections
+- `--target-ca-cert-file`: Path to CA certificate file for target MongoDB TLS connections
 - `--incremental`: Perform incremental copy (only copy new or updated documents)
-- `--timeout`: Connection timeout in seconds (default: 30)
+- `--timeout`: Connection timeout in seconds (default: 120)
 - `--databases`: List of specific databases to copy (default: all non-system databases)
 - `--collections`: List of specific collections to copy (default: all non-system collections)
 - `--exclude-databases`: List of databases to exclude from copy
@@ -109,16 +112,75 @@ nmongo copy
 
 ## MongoDB Client Configuration
 
-The MongoDB client now supports an optional CA certificate file for secure connections. To use this feature, provide the path to the CA certificate file when creating a new client:
+### TLS Support
+
+The MongoDB client supports TLS connections with custom CA certificates.
+
+### Using CA Certificate Files
+
+You can specify separate CA certificates for source and target MongoDB connections:
+
+```bash
+nmongo copy --source "mongodb://user:password@your-mongodb-host:27018/" \
+            --target "mongodb://localhost:27017" \
+            --source-ca-cert-file /path/to/source-certificate.crt \
+            --target-ca-cert-file /path/to/target-certificate.crt
+```
+
+
+#### Windows Path Support
+
+On Windows, you can use both forward slashes or backslashes in the certificate path:
+
+```bash
+nmongo copy --source "mongodb://user:password@your-mongodb-host:27018/" \
+            --target "mongodb://localhost:27017" \
+            --source-ca-cert-file "C:\path\to\source-certificate.crt" \
+            --target-ca-cert-file "C:\path\to\target-certificate.crt"
+```
+
+### Managed Cloud MongoDB Services
+
+When connecting to managed MongoDB services like MongoDB Atlas, Azure Cosmos DB, or other cloud providers, you'll need to:
+
+1. Download the CA certificate from your cloud provider (if required)
+2. Specify the certificate file with the `--ca-cert-file` flag
+3. Use the MongoDB connection string provided by your cloud service
+
+Example:
+
+```bash
+nmongo copy --source "mongodb://user:password@your-cluster.mongodb.net:27018/" \
+            --target "mongodb://localhost:27017" \
+            --source-ca-cert-file cloud-provider-ca.crt \
+            --incremental \
+            --last-modified-field createdAt
+```
+
+### Connection Timeout 
+
+For slow connections or when connecting to remote cloud databases, you may need to increase the connection timeout:
+
+```bash
+nmongo copy --source "mongodb://user:password@your-mongodb-host:27018/" \
+            --target "mongodb://localhost:27017" \
+            --source-ca-cert-file /path/to/source-certificate.crt \
+            --target-ca-cert-file /path/to/target-certificate.crt \
+            --timeout 120
+```
+
+The default timeout is now 120 seconds, which should be sufficient for most cloud connections.
+
+### Programmatic Usage
+
+When using the client programmatically:
 
 ```go
-client, err := mongodb.NewClient(ctx, "mongodb://localhost:27017", "/path/to/ca-cert.pem")
+client, err := mongodb.NewClient(ctx, "mongodb://user:password@host:port/", "/path/to/ca-cert.pem")
 if err != nil {
     log.Fatalf("Failed to create MongoDB client: %v", err)
 }
 ```
-
-If no CA certificate file is provided, the client will connect without additional TLS configuration.
 
 ## Development
 

@@ -15,7 +15,8 @@ import (
 var (
 	sourceURI          string
 	targetURI          string
-	caCertFile         string
+	sourceCACertFile   string
+	targetCACertFile   string
 	incremental        bool
 	timeout            int
 	databases          []string
@@ -56,8 +57,11 @@ Examples:
 			if targetURI == "" {
 				targetURI = cfg.TargetURI
 			}
-			if caCertFile == "" {
-				caCertFile = cfg.CaCertFile
+			if sourceCACertFile == "" {
+				sourceCACertFile = cfg.SourceCACertFile
+			}
+			if targetCACertFile == "" {
+				targetCACertFile = cfg.TargetCACertFile
 			}
 			if !cmd.Flags().Changed("incremental") {
 				incremental = cfg.Incremental
@@ -95,7 +99,8 @@ Examples:
 			cfg := &config.Config{
 				SourceURI:          sourceURI,
 				TargetURI:          targetURI,
-				CaCertFile:         caCertFile,
+				SourceCACertFile:   sourceCACertFile,
+				TargetCACertFile:   targetCACertFile,
 				Incremental:        incremental,
 				Timeout:            timeout,
 				Databases:          databases,
@@ -124,9 +129,10 @@ func init() {
 	// Add flags for the copy command
 	copyCmd.Flags().StringVar(&sourceURI, "source", "", "Source MongoDB connection string (required)")
 	copyCmd.Flags().StringVar(&targetURI, "target", "", "Target MongoDB connection string (required)")
-	copyCmd.Flags().StringVar(&caCertFile, "ca-cert-file", "", "Path to CA certificate file for TLS connections")
+	copyCmd.Flags().StringVar(&sourceCACertFile, "source-ca-cert-file", "", "Path to CA certificate file for source MongoDB TLS connections")
+	copyCmd.Flags().StringVar(&targetCACertFile, "target-ca-cert-file", "", "Path to CA certificate file for target MongoDB TLS connections")
 	copyCmd.Flags().BoolVar(&incremental, "incremental", false, "Perform incremental copy (only copy new or updated documents)")
-	copyCmd.Flags().IntVar(&timeout, "timeout", 30, "Connection timeout in seconds")
+	copyCmd.Flags().IntVar(&timeout, "timeout", 120, "Connection timeout in seconds")
 	copyCmd.Flags().StringSliceVar(&databases, "databases", []string{}, "List of databases to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&collections, "collections", []string{}, "List of collections to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&excludeDatabases, "exclude-databases", []string{}, "List of databases to exclude from copy")
@@ -148,13 +154,14 @@ func runCopy() error {
 	defer cancel()
 
 	// Connect to source MongoDB
-	sourceClient, err := mongodb.NewClient(ctx, sourceURI, caCertFile)
+	sourceClient, err := mongodb.NewClient(ctx, sourceURI, sourceCACertFile)
 	if err != nil {
 		return fmt.Errorf("failed to connect to source MongoDB: %w", err)
 	}
 	defer sourceClient.Disconnect(ctx)
+
 	// Connect to target MongoDB
-	targetClient, err := mongodb.NewClient(ctx, targetURI, caCertFile)
+	targetClient, err := mongodb.NewClient(ctx, targetURI, targetCACertFile)
 	if err != nil {
 		return fmt.Errorf("failed to connect to target MongoDB: %w", err)
 	}
@@ -194,8 +201,11 @@ func logBasicConfig() {
 	fmt.Println("Starting MongoDB copy operation")
 	fmt.Printf("Source: %s\n", sourceURI)
 	fmt.Printf("Target: %s\n", targetURI)
-	if caCertFile != "" {
-		fmt.Printf("CA Certificate File: %s\n", caCertFile)
+	if sourceCACertFile != "" {
+		fmt.Printf("Source CA Certificate File: %s\n", sourceCACertFile)
+	}
+	if targetCACertFile != "" {
+		fmt.Printf("Target CA Certificate File: %s\n", targetCACertFile)
 	}
 	fmt.Printf("Incremental mode: %v\n", incremental)
 	fmt.Printf("Batch size: %d\n", batchSize)

@@ -8,6 +8,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,34 +27,54 @@ type Client struct {
 func NewClient(ctx context.Context, uri, caCertFile string) (*Client, error) {
 	clientOptions := options.Client().ApplyURI(uri)
 
+	// Disable authentication timeout to prevent premature auth failures
+	clientOptions.SetConnectTimeout(30 * time.Second)
+	clientOptions.SetServerSelectionTimeout(30 * time.Second)
+
 	// If a CA certificate file is provided, configure TLS
 	if caCertFile != "" {
-		certs, err := os.ReadFile(caCertFile)
+		fmt.Printf("Using CA certificate file: %s\n", caCertFile)
+
+		// Handle Windows paths by converting backslashes to forward slashes
+		normalizedPath := strings.ReplaceAll(caCertFile, "\\", "/")
+
+		certs, err := os.ReadFile(normalizedPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
 		}
 
+		fmt.Printf("Successfully read CA certificate file (%d bytes)\n", len(certs))
+
 		// Create a TLS configuration with the CA certificate
-		tlsConfig := &tls.Config{}
-		if tlsConfig.RootCAs == nil {
-			tlsConfig.RootCAs = x509.NewCertPool()
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
 		}
-		if !tlsConfig.RootCAs.AppendCertsFromPEM(certs) {
-			return nil, fmt.Errorf("failed to append CA certificate")
+
+		rootCAs := x509.NewCertPool()
+		if !rootCAs.AppendCertsFromPEM(certs) {
+			return nil, fmt.Errorf("failed to append CA certificate - invalid PEM format")
 		}
+		tlsConfig.RootCAs = rootCAs
 
 		clientOptions.SetTLSConfig(tlsConfig)
+		fmt.Println("TLS configuration applied with custom root CA")
 	}
 
+	fmt.Printf("Connecting to MongoDB: %s\n", uri)
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
 
 	// Ping the MongoDB server to verify the connection
-	if err := client.Ping(ctx, nil); err != nil {
+	fmt.Println("Pinging MongoDB server...")
+	pingCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	if err := client.Ping(pingCtx, nil); err != nil {
 		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
+	fmt.Println("Successfully connected to MongoDB")
 
 	return &Client{
 		client:     client,
