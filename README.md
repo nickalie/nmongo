@@ -4,12 +4,11 @@ A Go-based CLI tool for MongoDB operations.
 
 ## Overview
 
-`nmongo` is a command-line interface tool written in Go that provides various MongoDB operations. Currently, it supports copying data between MongoDB clusters with the following features:
+`nmongo` is a command-line interface tool written in Go that provides various MongoDB operations. It supports:
 
-- Copy all databases and collections from one MongoDB cluster to another
-- Copy collection indexes along with the data to preserve query performance
-- Support for incremental copying to only transfer new or updated documents
-- Customizable field for tracking last modified documents in incremental copies
+- Copying data between MongoDB clusters with all indexes
+- Comparing data between MongoDB clusters to identify differences
+- Incremental copying to only transfer new or updated documents
 - Include or exclude specific databases and collections
 - Adjustable batch size for optimized performance
 - Save and load configurations from files in multiple formats (JSON, YAML, TOML)
@@ -59,6 +58,31 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--save-config`: Save current flags to configuration file
 - `--config-format`: Configuration file format for saving (json, yaml, or toml)
 
+### Compare Command
+
+Compare data between MongoDB clusters to identify differences:
+
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017"
+```
+
+#### Options
+
+- `--source`: Source MongoDB connection string (required)
+- `--target`: Target MongoDB connection string (required)
+- `--source-ca-cert-file`: Path to CA certificate file for source MongoDB TLS connections
+- `--target-ca-cert-file`: Path to CA certificate file for target MongoDB TLS connections
+- `--timeout`: Connection timeout in seconds (default: 30)
+- `--databases`: List of specific databases to compare (default: all non-system databases)
+- `--collections`: List of specific collections to compare (default: all non-system collections)
+- `--exclude-databases`: List of databases to exclude from comparison
+- `--exclude-collections`: List of collections to exclude from comparison
+- `--batch-size`: Batch size for document operations (default: 10000)
+- `--detailed`: Perform detailed document-by-document comparison (slower but more comprehensive)
+- `--output`: Write comparison results to specified JSON file
+- `--config`: Path to configuration file
+- `--save-config`: Save current flags to configuration file
+
 ### Configuration Management
 
 Save current settings to configuration file:
@@ -74,6 +98,8 @@ nmongo config show
 ```
 
 ## Examples
+
+### Copy Examples
 
 Copy all databases:
 ```bash
@@ -121,6 +147,33 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 Use saved configuration:
 ```bash
 nmongo copy
+```
+
+### Compare Examples
+
+Basic comparison (document counts only):
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017"
+```
+
+Detailed document-by-document comparison:
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --detailed
+```
+
+Compare specific databases:
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --databases="db1,db2"
+```
+
+Compare specific collections:
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --collections="users,products"
+```
+
+Save comparison results to a file:
+```bash
+nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --output="comparison.json"
 ```
 
 ## MongoDB Client Configuration
