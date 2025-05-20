@@ -117,7 +117,17 @@ func CopyCollection(
 	defer cursor.Close(ctx)
 
 	// Process documents in batches
-	return processBatches(ctx, cursor, targetColl, collName, incremental, batchSize)
+	if err := processBatches(ctx, cursor, targetColl, collName, incremental, batchSize); err != nil {
+		return err
+	}
+
+	// Copy indexes from source to target collection
+	if err := CopyCollectionIndexes(ctx, sourceDB, targetDB, collName); err != nil {
+		fmt.Printf("  Warning: Failed to copy indexes for collection %s: %v\n", collName, err)
+		// Continue even if indexes copy fails - at least the data was copied
+	}
+
+	return nil
 }
 
 // prepareFilter creates the appropriate query filter based on the incremental flag
@@ -316,4 +326,153 @@ func prepareBulkOps(batch []interface{}) []mongo.WriteModel {
 	}
 
 	return bulkOps
+}
+
+// ListCollectionIndexes returns all indexes for a collection
+func ListCollectionIndexes(ctx context.Context, db *mongo.Database, collName string) ([]bson.M, error) {
+	coll := db.Collection(collName)
+	cursor, err := coll.Indexes().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list indexes for collection %s: %w", collName, err)
+	}
+	defer cursor.Close(ctx)
+
+	var indexes []bson.M
+	if err := cursor.All(ctx, &indexes); err != nil {
+		return nil, fmt.Errorf("failed to decode indexes for collection %s: %w", collName, err)
+	}
+
+	return indexes, nil
+}
+
+// CopyCollectionIndexes copies all indexes from source collection to target collection
+func CopyCollectionIndexes(ctx context.Context, sourceDB, targetDB *mongo.Database, collName string) error {
+	fmt.Printf("  Copying indexes for collection: %s\n", collName)
+
+	// Get all indexes from source collection
+	indexes, err := ListCollectionIndexes(ctx, sourceDB, collName)
+	if err != nil {
+		return err
+	}
+
+	if len(indexes) <= 1 {
+		// Only _id index exists, nothing to copy
+		fmt.Printf("  No custom indexes found for collection: %s\n", collName)
+		return nil
+	}
+
+	// Create indexes on target collection
+	targetColl := targetDB.Collection(collName)
+	indexCount := 0
+
+	for _, indexDoc := range indexes {
+		// Skip the _id index which is created automatically
+		if isIDIndex(indexDoc) {
+			continue
+		}
+
+		// Convert the index document to createIndexes command format
+		indexModel, err := convertToIndexModel(indexDoc)
+		if err != nil {
+			fmt.Printf("    Warning: Failed to convert index %v: %v. Skipping.\n", indexDoc, err)
+			continue
+		}
+
+		// Create the index
+		indexName, err := targetColl.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			fmt.Printf("    Warning: Failed to create index %v: %v. Skipping.\n", indexModel, err)
+			continue
+		}
+
+		indexCount++
+		fmt.Printf("    Created index %s\n", indexName)
+	}
+
+	fmt.Printf("  Copied %d indexes for collection: %s\n", indexCount, collName)
+	return nil
+}
+
+// isIDIndex checks if the index is the default _id index
+func isIDIndex(indexDoc bson.M) bool {
+	name, ok := indexDoc["name"].(string)
+	if !ok {
+		return false
+	}
+	return name == "_id_"
+}
+
+// convertToIndexModel converts a MongoDB index document to an IndexModel
+// Refactored to reduce cyclomatic complexity
+func convertToIndexModel(indexDoc bson.M) (mongo.IndexModel, error) {
+	// Extract key fields
+	keyDoc, ok := indexDoc["key"].(bson.M)
+	if !ok {
+		return mongo.IndexModel{}, fmt.Errorf("index does not have a valid key field")
+	}
+
+	// Convert keys to proper format
+	keys := extractIndexKeys(keyDoc)
+
+	// Set up index options
+	indexOptions := buildIndexOptions(indexDoc)
+
+	// Create the IndexModel
+	model := mongo.IndexModel{
+		Keys:    keys,
+		Options: indexOptions,
+	}
+
+	return model, nil
+}
+
+// extractIndexKeys converts MongoDB key document to index keys format
+func extractIndexKeys(keyDoc bson.M) bson.D {
+	keys := bson.D{}
+
+	for k, v := range keyDoc {
+		// Convert value to int for index direction (1 or -1)
+		switch val := v.(type) {
+		case int32:
+			keys = append(keys, bson.E{Key: k, Value: val})
+		case float64:
+			// Convert from double/float (may happen in some MongoDB versions)
+			keys = append(keys, bson.E{Key: k, Value: int32(val)})
+		default:
+			// For text or other special indexes, keep the original value
+			keys = append(keys, bson.E{Key: k, Value: v})
+		}
+	}
+
+	return keys
+}
+
+// buildIndexOptions creates index options from the index document
+func buildIndexOptions(indexDoc bson.M) *options.IndexOptions {
+	opts := options.IndexOptions{}
+
+	// Set name if it exists
+	if name, ok := indexDoc["name"].(string); ok {
+		opts.SetName(name)
+	}
+
+	// Set unique flag
+	if unique, ok := indexDoc["unique"].(bool); ok && unique {
+		opts.SetUnique(true)
+	}
+
+	// Set sparse flag
+	if sparse, ok := indexDoc["sparse"].(bool); ok && sparse {
+		opts.SetSparse(true)
+	}
+
+	// Handle TTL indexes (expireAfterSeconds)
+	if expireAfterSeconds, ok := indexDoc["expireAfterSeconds"].(int32); ok {
+		opts.SetExpireAfterSeconds(expireAfterSeconds)
+	}
+
+	// Note: We're removing the background option as it's deprecated in MongoDB 4.2+
+	// MongoDB now always builds indexes in the background
+
+	return &opts
 }

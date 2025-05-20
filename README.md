@@ -7,6 +7,7 @@ A Go-based CLI tool for MongoDB operations.
 `nmongo` is a command-line interface tool written in Go that provides various MongoDB operations. Currently, it supports copying data between MongoDB clusters with the following features:
 
 - Copy all databases and collections from one MongoDB cluster to another
+- Copy collection indexes along with the data to preserve query performance
 - Support for incremental copying to only transfer new or updated documents
 - Customizable field for tracking last modified documents in incremental copies
 - Include or exclude specific databases and collections
