@@ -68,14 +68,14 @@ func TestProgressUpdates(t *testing.T) {
 		&batch, &docCount, &lastProgressTime, progressUpdateInterval,
 	)
 	require.NoError(t, err, "Document processing should succeed")
-	
+
 	// Process the remaining batch
 	if len(batch) > 0 {
 		err = handleRemainingDocuments(ctx, targetColl, targetCollName, false, batch, &docCount)
 		require.NoError(t, err, "Handling remaining documents should succeed")
 	}
 
-	// Verify results - all documents should be processed 
+	// Verify results - all documents should be processed
 	count, err := targetColl.CountDocuments(ctx, bson.M{})
 	require.NoError(t, err, "Failed to count documents")
 	assert.Equal(t, int64(50), count, "All documents should be copied")
