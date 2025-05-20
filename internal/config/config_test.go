@@ -29,39 +29,39 @@ func TestConfigSaveLoadFormatTypes(t *testing.T) {
 		"yaml",
 		"toml",
 	}
-	
+
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "config-test")
 	require.NoError(t, err, "Failed to create temp directory")
 	defer os.RemoveAll(tempDir)
-		// Create a test config
+	// Create a test config
 	testConfig := &Config{
-		SourceURI:      "mongodb://source:27017",
-		TargetURI:      "mongodb://dest:27017",
-		Incremental:    true,
-		Timeout:        60,
-		Databases:      []string{"db1", "db2"},
-		Collections:    []string{"coll1", "coll2"},
-		BatchSize:      2000,
+		SourceURI:   "mongodb://source:27017",
+		TargetURI:   "mongodb://dest:27017",
+		Incremental: true,
+		Timeout:     60,
+		Databases:   []string{"db1", "db2"},
+		Collections: []string{"coll1", "coll2"},
+		BatchSize:   2000,
 	}
-	
+
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
 			// Create a config file path
 			configFilePath := filepath.Join(tempDir, "config."+format)
-			
+
 			// Save the config
 			err = SaveConfig(testConfig, configFilePath)
 			require.NoError(t, err, "Failed to save config")
-			
+
 			// Verify file exists
 			_, err = os.Stat(configFilePath)
 			require.NoError(t, err, "Config file should exist")
-			
+
 			// Load the config
 			loadedConfig, err := LoadConfig(configFilePath)
 			require.NoError(t, err, "Failed to load config")
-					// Verify loaded config matches the original
+			// Verify loaded config matches the original
 			assert.Equal(t, testConfig.SourceURI, loadedConfig.SourceURI, "Loaded SourceURI should match")
 			assert.Equal(t, testConfig.TargetURI, loadedConfig.TargetURI, "Loaded TargetURI should match")
 			assert.Equal(t, testConfig.Incremental, loadedConfig.Incremental, "Loaded Incremental should match")
@@ -112,15 +112,15 @@ func TestGetConfigFilePathWithExt(t *testing.T) {
 		{"TOML", "toml", "config.toml"},
 		{"WithDot", ".yml", "config.yml"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			configPath, err := GetConfigFilePathWithExt(tc.ext)
 			require.NoError(t, err, "Failed to get config file path")
-			
+
 			homeDir, err := os.UserHomeDir()
 			require.NoError(t, err, "Failed to get home directory")
-			
+
 			expectedPath := filepath.Join(homeDir, ".nmongo", tc.expected)
 			assert.Equal(t, expectedPath, configPath, "Config file path should have the correct extension")
 		})

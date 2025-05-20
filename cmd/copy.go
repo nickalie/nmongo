@@ -7,22 +7,19 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"nmongo/internal/config"
 	"nmongo/internal/mongodb"
 )
 
 var (
-	sourceURI      string
-	targetURI      string
-	incremental    bool
-	timeout        int
-	databases      []string
-	collections    []string
-	batchSize      int
+	sourceURI   string
+	targetURI   string
+	incremental bool
+	timeout     int
+	databases   []string
+	collections []string
+	batchSize   int
 )
 
 // copyCmd represents the copy command
@@ -49,10 +46,10 @@ Example:
 			if targetURI == "" {
 				targetURI = cfg.TargetURI
 			}
-			if cmd.Flags().Changed("incremental") == false {
+			if !cmd.Flags().Changed("incremental") {
 				incremental = cfg.Incremental
 			}
-			if cmd.Flags().Changed("timeout") == false {
+			if !cmd.Flags().Changed("timeout") {
 				timeout = cfg.Timeout
 			}
 			if len(databases) == 0 {
@@ -61,25 +58,26 @@ Example:
 			if len(collections) == 0 {
 				collections = cfg.Collections
 			}
-			if cmd.Flags().Changed("batch-size") == false {
+			if !cmd.Flags().Changed("batch-size") {
 				batchSize = cfg.BatchSize
 			}
 		}
 
 		// Save configuration if requested
-		if saveConfig {			configPath, err := config.GetConfigFilePath()
+		if saveConfig {
+			configPath, err := config.GetConfigFilePath()
 			if err != nil {
 				log.Fatalf("Error getting configuration path: %v", err)
 			}
-			
+
 			cfg := &config.Config{
-				SourceURI:      sourceURI,
-				TargetURI:      targetURI,
-				Incremental:    incremental,
-				Timeout:        timeout,
-				Databases:      databases,
-				Collections:    collections,
-				BatchSize:      batchSize,
+				SourceURI:   sourceURI,
+				TargetURI:   targetURI,
+				Incremental: incremental,
+				Timeout:     timeout,
+				Databases:   databases,
+				Collections: collections,
+				BatchSize:   batchSize,
 			}
 
 			if err := config.SaveConfig(cfg, configPath); err != nil {
@@ -126,7 +124,8 @@ func runCopy() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to source MongoDB: %w", err)
 	}
-	defer sourceClient.Disconnect(ctx)	// Connect to target MongoDB
+	defer sourceClient.Disconnect(ctx)
+	// Connect to target MongoDB
 	targetClient, err := mongodb.NewClient(ctx, targetURI)
 	if err != nil {
 		return fmt.Errorf("failed to connect to target MongoDB: %w", err)
@@ -178,90 +177,5 @@ func copyDatabase(ctx context.Context, sourceClient, targetClient *mongodb.Clien
 			return fmt.Errorf("failed to copy collection %s.%s: %w", dbName, collName, err)
 		}
 	}
-
-	return nil
-}
-
-// getCollections returns the list of collections to copy
-func getCollections(ctx context.Context, db *mongo.Database, requestedColls []string) ([]string, error) {
-	if len(requestedColls) > 0 {
-		return requestedColls, nil
-	}
-
-	// List all collections
-	colls, err := db.ListCollectionNames(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter out system collections
-	var filteredColls []string
-	for _, coll := range colls {
-		if coll != "system.profile" && coll != "system.views" {
-			filteredColls = append(filteredColls, coll)
-		}
-	}
-
-	return filteredColls, nil
-}
-
-// copyCollection copies a single collection from source to target
-func copyCollection(ctx context.Context, sourceDB, targetDB *mongo.Database, collName string) error {	fmt.Printf("  Copying collection: %s\n", collName)
-
-	sourceColl := sourceDB.Collection(collName)
-	targetColl := targetDB.Collection(collName)
-	// Define the query filter based on incremental flag
-	filter := bson.M{}
-	if incremental {
-		// In incremental mode, we need to find documents that don't exist in the target
-		// or that have been updated since the last copy
-		// This is a simplified approach and might need refinement based on your requirements
-		fmt.Printf("  Using incremental mode for collection: %s\n", collName)
-
-		// For incremental copy, we would ideally use timestamps or modification dates
-		// This is a placeholder for actual incremental logic
-		// TODO: Implement proper incremental copy logic
-	}
-
-	// Create a cursor for the source collection
-	findOptions := options.Find().SetBatchSize(int32(batchSize))
-	cursor, err := sourceColl.Find(ctx, filter, findOptions)
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	// Process documents in batches
-	batch := make([]interface{}, 0, batchSize)
-	for cursor.Next(ctx) {
-		var doc bson.M
-		if err := cursor.Decode(&doc); err != nil {
-			return err
-		}
-		batch = append(batch, doc)
-		// If batch is full, insert the batch
-		if len(batch) >= batchSize {
-			if len(batch) > 0 {
-				_, err := targetColl.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
-				if err != nil {
-					// Handle duplicate key errors for incremental copy
-					if mongo.IsDuplicateKeyError(err) && incremental {
-						fmt.Printf("    Skipping duplicate documents in %s\n", collName)
-					} else {
-						return err
-					}
-				}
-
-				fmt.Printf("    Copied %d documents to %s\n", len(batch), collName)
-				batch = batch[:0] // Clear the batch
-			}
-		}
-	}
-
-	if err := cursor.Err(); err != nil {
-		return err
-	}
-
-	fmt.Printf("  Completed copying collection: %s\n", collName)
 	return nil
 }

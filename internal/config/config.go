@@ -1,3 +1,5 @@
+// Package config handles configuration management for the nmongo application.
+// It provides functions to load, save, and access configuration settings.
 package config
 
 import (
@@ -11,35 +13,35 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	SourceURI      string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
-	TargetURI      string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
-	Incremental    bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
-	Timeout        int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
-	Databases      []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
-	Collections    []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
-	BatchSize      int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
+	SourceURI   string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
+	TargetURI   string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
+	Incremental bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
+	Timeout     int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
+	Databases   []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
+	Collections []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
+	BatchSize   int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		SourceURI:      "",
-		TargetURI:      "",
-		Incremental:    false,
-		Timeout:        30,
-		Databases:      []string{},
-		Collections:    []string{},
-		BatchSize:      1000,
+		SourceURI:   "",
+		TargetURI:   "",
+		Incremental: false,
+		Timeout:     30,
+		Databases:   []string{},
+		Collections: []string{},
+		BatchSize:   1000,
 	}
 }
 
 // LoadConfig loads configuration from a file
 func LoadConfig(filePath string) (*Config, error) {
 	config := DefaultConfig()
-	
+
 	// Initialize viper
 	v := viper.New()
-		// Set default values
+	// Set default values
 	v.SetDefault("sourceUri", config.SourceURI)
 	v.SetDefault("targetUri", config.TargetURI)
 	v.SetDefault("incremental", config.Incremental)
@@ -47,25 +49,25 @@ func LoadConfig(filePath string) (*Config, error) {
 	v.SetDefault("databases", config.Databases)
 	v.SetDefault("collections", config.Collections)
 	v.SetDefault("batchSize", config.BatchSize)
-	
+
 	// Configure Viper to use the file
 	v.SetConfigFile(filePath)
-	
+
 	// Check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("config file not found: %s", filePath)
 	}
-	
+
 	// Read the configuration file
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	
+
 	// Unmarshal the config into our struct
 	if err := v.Unmarshal(config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
-	
+
 	return config, nil
 }
 
@@ -76,10 +78,10 @@ func SaveConfig(config *Config, filePath string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	
+
 	// Initialize Viper
 	v := viper.New()
-		// Set the values from our config
+	// Set the values from our config
 	v.Set("sourceUri", config.SourceURI)
 	v.Set("targetUri", config.TargetURI)
 	v.Set("incremental", config.Incremental)
@@ -87,10 +89,10 @@ func SaveConfig(config *Config, filePath string) error {
 	v.Set("databases", config.Databases)
 	v.Set("collections", config.Collections)
 	v.Set("batchSize", config.BatchSize)
-	
+
 	// Set the config file
 	v.SetConfigFile(filePath)
-	
+
 	// Determine format based on file extension
 	ext := filepath.Ext(filePath)
 	if ext != "" {
@@ -99,12 +101,12 @@ func SaveConfig(config *Config, filePath string) error {
 		// Default to JSON if no extension
 		v.SetConfigType("json")
 	}
-	
+
 	// Write the config file
 	if err := v.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -132,17 +134,17 @@ func GetConfigFilePathWithExt(extension string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// If extension is empty or doesn't start with a dot, use default
 	if extension == "" {
 		return basePath, nil
 	}
-	
+
 	// Make sure extension starts with a dot
 	if !strings.HasPrefix(extension, ".") {
 		extension = "." + extension
 	}
-	
+
 	// Replace the extension
 	baseWithoutExt := strings.TrimSuffix(basePath, filepath.Ext(basePath))
 	return baseWithoutExt + extension, nil

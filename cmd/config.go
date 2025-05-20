@@ -1,3 +1,5 @@
+// Package cmd provides the command line interface for the nmongo application.
+// It defines various commands for interacting with MongoDB clusters.
 package cmd
 
 import (
@@ -9,8 +11,8 @@ import (
 )
 
 var (
-	configFile string
-	saveConfig bool
+	configFile   string
+	saveConfig   bool
 	configFormat string
 )
 
@@ -35,7 +37,7 @@ var configShowCmd = &cobra.Command{
 		// Get the config path with the specified format
 		var configPath string
 		var err error
-		
+
 		if configFile != "" {
 			configPath = configFile
 		} else if configFormat != "" {
@@ -77,7 +79,7 @@ var configSaveCmd = &cobra.Command{
 		// Get the config path with the specified format
 		var configPath string
 		var err error
-		
+
 		if configFile != "" {
 			configPath = configFile
 		} else if configFormat != "" {
@@ -94,13 +96,13 @@ var configSaveCmd = &cobra.Command{
 
 		// Create config from command-line flags
 		cfg := &config.Config{
-			SourceURI:      sourceURI,
-			TargetURI:      targetURI,
-			Incremental:    incremental,
-			Timeout:        timeout,
-			Databases:      databases,
-			Collections:    collections,
-			BatchSize:      batchSize,
+			SourceURI:   sourceURI,
+			TargetURI:   targetURI,
+			Incremental: incremental,
+			Timeout:     timeout,
+			Databases:   databases,
+			Collections: collections,
+			BatchSize:   batchSize,
 		}
 
 		// Save configuration
@@ -116,12 +118,12 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configSaveCmd)
-	
+
 	// Add format flag to both show and save commands
 	configCmd.PersistentFlags().StringVar(&configFormat, "format", "", "Configuration file format (json, yaml, or toml)")
 	configShowCmd.Flags().StringVar(&configFile, "file", "", "Path to configuration file")
 	configSaveCmd.Flags().StringVar(&configFile, "file", "", "Path to configuration file")
-	
+
 	// Add config-related flags to the copy command
 	copyCmd.Flags().StringVar(&configFile, "config", "", "Path to configuration file")
 	copyCmd.Flags().BoolVar(&saveConfig, "save-config", false, "Save current flags to configuration file")

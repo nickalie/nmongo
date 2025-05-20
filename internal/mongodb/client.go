@@ -1,3 +1,5 @@
+// Package mongodb provides MongoDB client functionality for the nmongo application.
+// It includes utilities for connecting to MongoDB clusters and copying data between them.
 package mongodb
 
 import (
@@ -94,79 +96,151 @@ func CopyCollection(
 	incremental bool,
 	batchSize int,
 ) error {
+	fmt.Printf("  Copying collection: %s\n", collName)
+
+	// Get source and target collections
 	sourceColl := sourceDB.Collection(collName)
 	targetColl := targetDB.Collection(collName)
 
-	// Define the query filter based on incremental flag
-	filter := bson.M{}
-	if incremental {
-		fmt.Printf("  Using incremental mode for collection: %s\n", collName)
-
-		// Create an incremental copy helper
-		helper := NewIncrementalCopyHelper(sourceDB.Client())
-
-		// Get the incremental filter
-		dbName := sourceDB.Name()
-		var err error
-		filter, err = helper.PrepareIncrementalFilter(ctx, dbName, collName)
-		if err != nil {
-			return fmt.Errorf("failed to prepare incremental filter: %w", err)
-		}
-
-		// Defer updating the last sync time
-		defer func() {
-			if err := helper.UpdateLastSyncTime(ctx, dbName, collName); err != nil {
-				fmt.Printf("  Warning: Failed to update last sync time: %v\n", err)
-			}
-		}()
+	// Prepare filter for query
+	filter, err := prepareFilter(ctx, sourceDB, collName, incremental)
+	if err != nil {
+		return err
 	}
 
 	// Create a cursor for the source collection
-	findOptions := options.Find().SetBatchSize(int32(batchSize))
-	cursor, err := sourceColl.Find(ctx, filter, findOptions)
+	cursor, err := createCursor(ctx, sourceColl, filter, batchSize)
 	if err != nil {
-		return fmt.Errorf("failed to query source collection: %w", err)
+		return err
 	}
 	defer cursor.Close(ctx)
 
 	// Process documents in batches
+	return processBatches(ctx, cursor, targetColl, collName, incremental, batchSize)
+}
+
+// prepareFilter creates the appropriate query filter based on the incremental flag
+func prepareFilter(ctx context.Context, sourceDB *mongo.Database, collName string, incremental bool) (bson.M, error) {
+	filter := bson.M{}
+
+	if !incremental {
+		return filter, nil
+	}
+
+	fmt.Printf("  Using incremental mode for collection: %s\n", collName)
+
+	// Create an incremental copy helper
+	helper := NewIncrementalCopyHelper(sourceDB.Client())
+
+	// Get the incremental filter
+	dbName := sourceDB.Name()
+	var err error
+	filter, err = helper.PrepareIncrementalFilter(ctx, dbName, collName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare incremental filter: %w", err)
+	}
+
+	// Defer updating the last sync time
+	defer func() {
+		if err := helper.UpdateLastSyncTime(ctx, dbName, collName); err != nil {
+			fmt.Printf("  Warning: Failed to update last sync time: %v\n", err)
+		}
+	}()
+
+	return filter, nil
+}
+
+// createCursor creates a cursor for the source collection
+func createCursor(ctx context.Context, sourceColl *mongo.Collection, filter bson.M, batchSize int) (*mongo.Cursor, error) {
+	findOptions := options.Find().SetBatchSize(int32(batchSize))
+	cursor, err := sourceColl.Find(ctx, filter, findOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query source collection: %w", err)
+	}
+	return cursor, nil
+}
+
+// processBatches processes the documents in batches
+func processBatches(
+	ctx context.Context,
+	cursor *mongo.Cursor,
+	targetColl *mongo.Collection,
+	collName string,
+	incremental bool,
+	batchSize int,
+) error {
 	var batch []interface{}
 	var docCount int
 
+	// Read and process documents
+	if err := readAndProcessDocuments(ctx, cursor, targetColl, collName, incremental, batchSize, &batch, &docCount); err != nil {
+		return err
+	}
+
+	// Insert any remaining documents
+	if err := handleRemainingDocuments(ctx, targetColl, collName, incremental, batch, &docCount); err != nil {
+		return err
+	}
+
+	// Check for cursor errors
+	if err := cursor.Err(); err != nil {
+		return fmt.Errorf("cursor error: %w", err)
+	}
+
+	fmt.Printf("  Completed copying collection: %s (%d documents)\n", collName, docCount)
+	return nil
+}
+
+// readAndProcessDocuments iterates through the cursor and processes documents in batches
+func readAndProcessDocuments(
+	ctx context.Context,
+	cursor *mongo.Cursor,
+	targetColl *mongo.Collection,
+	collName string,
+	incremental bool,
+	batchSize int,
+	batch *[]interface{},
+	docCount *int,
+) error {
 	for cursor.Next(ctx) {
 		var doc bson.M
 		if err := cursor.Decode(&doc); err != nil {
 			return fmt.Errorf("failed to decode document: %w", err)
 		}
 
-		batch = append(batch, doc)
+		*batch = append(*batch, doc)
+
 		// If batch is full, insert the batch
-		if len(batch) >= batchSize {
-			if err := insertBatch(ctx, targetColl, batch, incremental); err != nil {
+		if len(*batch) >= batchSize {
+			if err := insertBatch(ctx, targetColl, *batch, incremental); err != nil {
 				return err
 			}
 
-			docCount += len(batch)
-			fmt.Printf("    Copied %d documents to %s (total: %d)\n", len(batch), collName, docCount)
-			batch = batch[:0] // Clear the batch
+			*docCount += len(*batch)
+			fmt.Printf("    Copied %d documents to %s (total: %d)\n", len(*batch), collName, *docCount)
+			*batch = (*batch)[:0] // Clear the batch
 		}
 	}
+	return nil
+}
 
-	// Insert any remaining documents
+// handleRemainingDocuments inserts any remaining documents in the batch
+func handleRemainingDocuments(
+	ctx context.Context,
+	targetColl *mongo.Collection,
+	collName string,
+	incremental bool,
+	batch []interface{},
+	docCount *int,
+) error {
 	if len(batch) > 0 {
 		if err := insertBatch(ctx, targetColl, batch, incremental); err != nil {
 			return err
 		}
 
-		docCount += len(batch)
-		fmt.Printf("    Copied %d documents to %s (total: %d)\n", len(batch), collName, docCount)
+		*docCount += len(batch)
+		fmt.Printf("    Copied %d documents to %s (total: %d)\n", len(batch), collName, *docCount)
 	}
-
-	if err := cursor.Err(); err != nil {
-		return fmt.Errorf("cursor error: %w", err)
-	}
-
-	fmt.Printf("  Completed copying collection: %s (%d documents)\n", collName, docCount)
 	return nil
 }
 

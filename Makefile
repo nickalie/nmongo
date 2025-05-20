@@ -23,9 +23,7 @@ run:
 
 # Check code quality
 lint:
-	go vet ./...
-	@command -v golint >/dev/null 2>&1 || { echo >&2 "golint not installed. Running: go install golang.org/x/lint/golint@latest"; go install golang.org/x/lint/golint@latest; }
-	golint ./...
+	golangci-lint run ./...
 
 # Generate documentation
 doc:
