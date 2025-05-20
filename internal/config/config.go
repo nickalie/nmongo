@@ -1,21 +1,23 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/spf13/viper"
 )
 
 // Config represents the application configuration
 type Config struct {
-	SourceURI      string   `json:"sourceUri"`
-	DestinationURI string   `json:"destinationUri"`
-	Incremental    bool     `json:"incremental"`
-	Timeout        int      `json:"timeout"`
-	Databases      []string `json:"databases"`
-	Collections    []string `json:"collections"`
-	BatchSize      int      `json:"batchSize"`
+	SourceURI      string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
+	DestinationURI string   `mapstructure:"destinationUri" json:"destinationUri" yaml:"destinationUri" toml:"destinationUri"`
+	Incremental    bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
+	Timeout        int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
+	Databases      []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
+	Collections    []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
+	BatchSize      int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
 }
 
 // DefaultConfig returns the default configuration
@@ -34,23 +36,37 @@ func DefaultConfig() *Config {
 // LoadConfig loads configuration from a file
 func LoadConfig(filePath string) (*Config, error) {
 	config := DefaultConfig()
-
+	
+	// Initialize viper
+	v := viper.New()
+	
+	// Set default values
+	v.SetDefault("sourceUri", config.SourceURI)
+	v.SetDefault("destinationUri", config.DestinationURI)
+	v.SetDefault("incremental", config.Incremental)
+	v.SetDefault("timeout", config.Timeout)
+	v.SetDefault("databases", config.Databases)
+	v.SetDefault("collections", config.Collections)
+	v.SetDefault("batchSize", config.BatchSize)
+	
+	// Configure Viper to use the file
+	v.SetConfigFile(filePath)
+	
 	// Check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("config file not found: %s", filePath)
 	}
-
-	// Read the file
-	data, err := os.ReadFile(filePath)
-	if err != nil {
+	
+	// Read the configuration file
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-
-	// Parse the JSON
-	if err := json.Unmarshal(data, config); err != nil {
+	
+	// Unmarshal the config into our struct
+	if err := v.Unmarshal(config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
-
+	
 	return config, nil
 }
 
@@ -61,18 +77,36 @@ func SaveConfig(config *Config, filePath string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-
-	// Marshal the JSON
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+	
+	// Initialize Viper
+	v := viper.New()
+	
+	// Set the values from our config
+	v.Set("sourceUri", config.SourceURI)
+	v.Set("destinationUri", config.DestinationURI)
+	v.Set("incremental", config.Incremental)
+	v.Set("timeout", config.Timeout)
+	v.Set("databases", config.Databases)
+	v.Set("collections", config.Collections)
+	v.Set("batchSize", config.BatchSize)
+	
+	// Set the config file
+	v.SetConfigFile(filePath)
+	
+	// Determine format based on file extension
+	ext := filepath.Ext(filePath)
+	if ext != "" {
+		v.SetConfigType(strings.TrimPrefix(ext, "."))
+	} else {
+		// Default to JSON if no extension
+		v.SetConfigType("json")
 	}
-
-	// Write the file
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	
+	// Write the config file
+	if err := v.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-
+	
 	return nil
 }
 
@@ -91,4 +125,27 @@ func GetConfigFilePath() (string, error) {
 	}
 
 	return filepath.Join(configDir, "config.json"), nil
+}
+
+// GetConfigFilePathWithExt returns the path to the config file with the specified extension
+func GetConfigFilePathWithExt(extension string) (string, error) {
+	// Get the base path
+	basePath, err := GetConfigFilePath()
+	if err != nil {
+		return "", err
+	}
+	
+	// If extension is empty or doesn't start with a dot, use default
+	if extension == "" {
+		return basePath, nil
+	}
+	
+	// Make sure extension starts with a dot
+	if !strings.HasPrefix(extension, ".") {
+		extension = "." + extension
+	}
+	
+	// Replace the extension
+	baseWithoutExt := strings.TrimSuffix(basePath, filepath.Ext(basePath))
+	return baseWithoutExt + extension, nil
 }
