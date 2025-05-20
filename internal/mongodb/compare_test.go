@@ -2,6 +2,8 @@ package mongodb
 
 import (
 	"context"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -265,6 +267,371 @@ func TestBsonEqual(t *testing.T) {
 			result := bsonEqual(tt.a, tt.b)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestUpdateSourceProgress(t *testing.T) {
+	// Redirect stdout to capture output
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Call the function
+	collName := "testCollection"
+	result := &DocumentProcessingResult{
+		docCount:        100,
+		missingInTarget: 5,
+		different:       10,
+	}
+	sourceCount := int64(200)
+
+	updateSourceProgress(collName, result, sourceCount)
+
+	// Restore stdout and get output
+	w.Close()
+	os.Stdout = oldStdout
+
+	output, _ := io.ReadAll(r)
+	outputStr := string(output)
+
+	// Verify the output
+	assert.Contains(t, outputStr, "Compared 100/200 documents in testCollection")
+	assert.Contains(t, outputStr, "Missing in target: 5, Different: 10")
+}
+
+func TestFilterByExclusionList(t *testing.T) {
+	testCases := []struct {
+		name           string
+		items          []string
+		exclusionList  []string
+		expectedResult []string
+	}{
+		{
+			name:           "Empty items and exclusions",
+			items:          []string{},
+			exclusionList:  []string{},
+			expectedResult: []string{},
+		},
+		{
+			name:           "Empty exclusions",
+			items:          []string{"a", "b", "c"},
+			exclusionList:  []string{},
+			expectedResult: []string{"a", "b", "c"},
+		},
+		{
+			name:           "Empty items",
+			items:          []string{},
+			exclusionList:  []string{"a", "b"},
+			expectedResult: []string{},
+		},
+		{
+			name:           "No matches in exclusion list",
+			items:          []string{"a", "b", "c"},
+			exclusionList:  []string{"d", "e"},
+			expectedResult: []string{"a", "b", "c"},
+		},
+		{
+			name:           "Some matches in exclusion list",
+			items:          []string{"a", "b", "c", "d", "e"},
+			exclusionList:  []string{"b", "d"},
+			expectedResult: []string{"a", "c", "e"},
+		},
+		{
+			name:           "All items in exclusion list",
+			items:          []string{"a", "b", "c"},
+			exclusionList:  []string{"a", "b", "c", "d"},
+			expectedResult: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := filterByExclusionList(tc.items, tc.exclusionList)
+			assert.Equal(t, tc.expectedResult, result)
+		})
+	}
+}
+
+func TestCompareCollections(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Set up two MongoDB containers
+	sourceContainer, sourceConnString := setupMongoContainer(t)
+	defer sourceContainer.Terminate(context.Background())
+
+	targetContainer, targetConnString := setupMongoContainer(t)
+	defer targetContainer.Terminate(context.Background())
+
+	// Set up test databases
+	dbName := "testdb"
+	collName1 := "testcoll1"
+	collName2 := "testcoll2"
+
+	// Setup source client and collections
+	ctx := context.Background()
+	sourceMongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(sourceConnString))
+	assert.NoError(t, err)
+	defer sourceMongoClient.Disconnect(ctx)
+
+	sourceClient, err := NewClient(ctx, sourceConnString, "")
+	assert.NoError(t, err)
+	defer sourceClient.Disconnect(ctx)
+
+	// Create test collections in source
+	sourceDB := sourceMongoClient.Database(dbName)
+	coll1 := sourceDB.Collection(collName1)
+	coll2 := sourceDB.Collection(collName2)
+
+	// Insert test data
+	docs1 := []interface{}{
+		bson.M{"_id": 1, "name": "Doc1Coll1", "value": 100},
+		bson.M{"_id": 2, "name": "Doc2Coll1", "value": 200},
+	}
+	_, err = coll1.InsertMany(ctx, docs1)
+	assert.NoError(t, err)
+
+	docs2 := []interface{}{
+		bson.M{"_id": 1, "name": "Doc1Coll2", "value": 300},
+		bson.M{"_id": 2, "name": "Doc2Coll2", "value": 400},
+	}
+	_, err = coll2.InsertMany(ctx, docs2)
+	assert.NoError(t, err)
+
+	// Setup target client and collections
+	targetMongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(targetConnString))
+	assert.NoError(t, err)
+	defer targetMongoClient.Disconnect(ctx)
+
+	targetClient, err := NewClient(ctx, targetConnString, "")
+	assert.NoError(t, err)
+	defer targetClient.Disconnect(ctx)
+
+	// Create test collections in target
+	targetDB := targetMongoClient.Database(dbName)
+	targetColl1 := targetDB.Collection(collName1)
+	targetColl2 := targetDB.Collection(collName2)
+
+	// Insert test data with some differences
+	targetDocs1 := []interface{}{
+		bson.M{"_id": 1, "name": "Doc1Coll1", "value": 100},         // Same as source
+		bson.M{"_id": 2, "name": "Doc2Coll1Modified", "value": 201}, // Different from source
+	}
+	_, err = targetColl1.InsertMany(ctx, targetDocs1)
+	assert.NoError(t, err)
+
+	// Only insert one document in collection 2
+	targetDocs2 := []interface{}{
+		bson.M{"_id": 1, "name": "Doc1Coll2", "value": 300}, // Same as source
+	}
+	_, err = targetColl2.InsertMany(ctx, targetDocs2)
+	assert.NoError(t, err)
+
+	// Test CompareCollections with specified collections
+	results, err := CompareCollections(ctx, sourceClient, targetClient, dbName, []string{collName1, collName2}, nil, 100, true)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+
+	// Verify results for collection 1
+	var coll1Result, coll2Result *ComparisonResult
+	for _, res := range results {
+		switch res.Collection {
+		case collName1:
+			coll1Result = res
+		case collName2:
+			coll2Result = res
+		}
+	}
+
+	assert.NotNil(t, coll1Result)
+	assert.Equal(t, dbName, coll1Result.Database)
+	assert.Equal(t, collName1, coll1Result.Collection)
+	assert.Equal(t, int64(2), coll1Result.SourceCount)
+	assert.Equal(t, int64(2), coll1Result.TargetCount)
+	assert.Equal(t, int64(0), coll1Result.Difference)
+	assert.Equal(t, int64(0), coll1Result.MissingInTarget)
+	assert.Equal(t, int64(1), coll1Result.DifferentDocuments)
+
+	assert.NotNil(t, coll2Result)
+	assert.Equal(t, dbName, coll2Result.Database)
+	assert.Equal(t, collName2, coll2Result.Collection)
+	assert.Equal(t, int64(2), coll2Result.SourceCount)
+	assert.Equal(t, int64(1), coll2Result.TargetCount)
+	assert.Equal(t, int64(1), coll2Result.Difference)
+	assert.Equal(t, int64(1), coll2Result.MissingInTarget)
+	assert.Equal(t, int64(0), coll2Result.DifferentDocuments)
+
+	// Test CompareCollections with an exclusion list
+	results, err = CompareCollections(ctx, sourceClient, targetClient, dbName, nil, []string{collName2}, 100, true)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(results))
+	assert.Equal(t, collName1, results[0].Collection)
+}
+
+func TestGetCollectionsToCompare(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Set up MongoDB container
+	container, connString := setupMongoContainer(t)
+	defer container.Terminate(context.Background())
+
+	// Set up test database with multiple collections
+	ctx := context.Background()
+	dbName := "testdb"
+
+	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(connString))
+	assert.NoError(t, err)
+	defer mongoClient.Disconnect(ctx)
+
+	// Create our client wrapper
+	client, err := NewClient(ctx, connString, "")
+	assert.NoError(t, err)
+	defer client.Disconnect(ctx)
+
+	// Create test collections
+	db := mongoClient.Database(dbName)
+	collections := []string{"coll1", "coll2", "coll3"}
+
+	for _, collName := range collections {
+		coll := db.Collection(collName)
+		_, err = coll.InsertOne(ctx, bson.M{"_id": 1, "name": "test"})
+		assert.NoError(t, err)
+	}
+
+	// Test with specified collections
+	specifiedColls := []string{"coll1", "coll2"}
+	result, err := getCollectionsToCompare(ctx, client, dbName, specifiedColls, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, specifiedColls, result)
+
+	// Test with nil collections (should list all except system collections)
+	result, err = getCollectionsToCompare(ctx, client, dbName, nil, nil)
+	assert.NoError(t, err)
+	// Should not include system.views
+	assert.ElementsMatch(t, []string{"coll1", "coll2", "coll3"}, result)
+
+	// Test with exclusion list
+	result, err = getCollectionsToCompare(ctx, client, dbName, nil, []string{"coll3"})
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"coll1", "coll2"}, result)
+
+	// Test with both specified collections and exclusion list
+	result, err = getCollectionsToCompare(ctx, client, dbName, []string{"coll1", "coll2", "coll3"}, []string{"coll2"})
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"coll1", "coll3"}, result)
+}
+
+func TestCompareCollectionSet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Set up two MongoDB containers
+	sourceContainer, sourceConnString := setupMongoContainer(t)
+	defer sourceContainer.Terminate(context.Background())
+
+	targetContainer, targetConnString := setupMongoContainer(t)
+	defer targetContainer.Terminate(context.Background())
+
+	// Set up test database
+	ctx := context.Background()
+	dbName := "testdb"
+
+	// Source setup
+	sourceMongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(sourceConnString))
+	assert.NoError(t, err)
+	defer sourceMongoClient.Disconnect(ctx)
+
+	sourceDB := sourceMongoClient.Database(dbName)
+
+	// Create test collections in source
+	coll1 := sourceDB.Collection("coll1")
+	_, err = coll1.InsertMany(ctx, []interface{}{
+		bson.M{"_id": 1, "name": "Doc1"},
+		bson.M{"_id": 2, "name": "Doc2"},
+	})
+	assert.NoError(t, err)
+
+	coll2 := sourceDB.Collection("coll2")
+	_, err = coll2.InsertMany(ctx, []interface{}{
+		bson.M{"_id": 3, "name": "Doc3"},
+		bson.M{"_id": 4, "name": "Doc4"},
+	})
+	assert.NoError(t, err)
+
+	// Target setup
+	targetMongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(targetConnString))
+	assert.NoError(t, err)
+	defer targetMongoClient.Disconnect(ctx)
+
+	targetDB := targetMongoClient.Database(dbName)
+
+	// Create collections in target with differences
+	targetColl1 := targetDB.Collection("coll1")
+	_, err = targetColl1.InsertMany(ctx, []interface{}{
+		bson.M{"_id": 1, "name": "Doc1"},
+		// Missing Doc2
+	})
+	assert.NoError(t, err)
+
+	targetColl2 := targetDB.Collection("coll2")
+	_, err = targetColl2.InsertMany(ctx, []interface{}{
+		bson.M{"_id": 3, "name": "Doc3Modified"}, // Different
+		bson.M{"_id": 4, "name": "Doc4"},
+	})
+	assert.NoError(t, err)
+
+	// Test compareCollectionSet
+	results := []*ComparisonResult{}
+	collections := []string{"coll1", "coll2"}
+
+	results, err = compareCollectionSet(ctx, sourceDB, targetDB, collections, 100, true, results)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+
+	// Verify results
+	var coll1Result, coll2Result *ComparisonResult
+	for _, result := range results {
+		switch result.Collection {
+		case "coll1":
+			coll1Result = result
+		case "coll2":
+			coll2Result = result
+		}
+	}
+
+	assert.NotNil(t, coll1Result)
+	assert.Equal(t, dbName, coll1Result.Database)
+	assert.Equal(t, int64(2), coll1Result.SourceCount)
+	assert.Equal(t, int64(1), coll1Result.TargetCount)
+	assert.Equal(t, int64(1), coll1Result.Difference)
+	assert.Equal(t, int64(1), coll1Result.MissingInTarget)
+
+	assert.NotNil(t, coll2Result)
+	assert.Equal(t, dbName, coll2Result.Database)
+	assert.Equal(t, int64(2), coll2Result.SourceCount)
+	assert.Equal(t, int64(2), coll2Result.TargetCount)
+	assert.Equal(t, int64(0), coll2Result.Difference)
+	assert.Equal(t, int64(0), coll2Result.MissingInTarget)
+	assert.Equal(t, int64(1), coll2Result.DifferentDocuments)
+
+	// Test with count-only
+	results = []*ComparisonResult{}
+	results, err = compareCollectionSet(ctx, sourceDB, targetDB, collections, 100, false, results)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+
+	// For count-only, we should still get collection counts but no missing or different docs
+	for _, result := range results {
+		if result.Collection == "coll1" {
+			assert.Equal(t, int64(2), result.SourceCount)
+			assert.Equal(t, int64(1), result.TargetCount)
+			assert.Equal(t, int64(1), result.Difference)
+			assert.Equal(t, int64(0), result.MissingInTarget) // Not calculated in count-only mode
+		}
 	}
 }
 
