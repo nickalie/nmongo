@@ -36,7 +36,7 @@ func DefaultConfig() *Config {
 		SourceCACertFile:   "",
 		TargetCACertFile:   "",
 		Incremental:        false,
-		Timeout:            120,
+		Timeout:            30,
 		Databases:          []string{},
 		Collections:        []string{},
 		ExcludeDatabases:   []string{},

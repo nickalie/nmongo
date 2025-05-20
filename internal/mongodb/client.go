@@ -27,9 +27,18 @@ type Client struct {
 func NewClient(ctx context.Context, uri, caCertFile string) (*Client, error) {
 	clientOptions := options.Client().ApplyURI(uri)
 
-	// Disable authentication timeout to prevent premature auth failures
-	clientOptions.SetConnectTimeout(30 * time.Second)
-	clientOptions.SetServerSelectionTimeout(30 * time.Second)
+	// Configure connection timeouts
+	clientOptions.SetConnectTimeout(60 * time.Second)
+	clientOptions.SetServerSelectionTimeout(60 * time.Second)
+
+	// Set socket timeout to a higher value (5 minutes) to prevent timeouts during data transfer
+	clientOptions.SetSocketTimeout(5 * time.Minute)
+
+	// Configure other MongoDB client parameters for better stability
+	clientOptions.SetMaxConnIdleTime(30 * time.Minute)
+	clientOptions.SetMaxPoolSize(100)                    // Increase connection pool size
+	clientOptions.SetMinPoolSize(10)                     // Ensure minimum number of connections
+	clientOptions.SetHeartbeatInterval(10 * time.Second) // More frequent server monitoring
 
 	// If a CA certificate file is provided, configure TLS
 	if caCertFile != "" {
@@ -68,7 +77,7 @@ func NewClient(ctx context.Context, uri, caCertFile string) (*Client, error) {
 
 	// Ping the MongoDB server to verify the connection
 	fmt.Println("Pinging MongoDB server...")
-	pingCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	if err := client.Ping(pingCtx, nil); err != nil {
@@ -150,26 +159,36 @@ func CopyCollection(
 	sourceColl := sourceDB.Collection(collName)
 	targetColl := targetDB.Collection(collName)
 
-	// Prepare filter for query
-	filter, err := prepareFilter(ctx, sourceDB, collName, incremental, lastModifiedField)
+	// Use a longer timeout for operations within the collection copy process
+	// This is crucial for large collections that take time to process
+	// Default to 30 minutes for cursor operations
+	cursorTimeout := 30 * time.Minute
+	opCtx, cancel := context.WithTimeout(context.Background(), cursorTimeout)
+	defer cancel()
+
+	// Update to use both source and target clients for incremental copy
+	filter, err := prepareFilterWithTarget(opCtx, sourceDB, targetDB, collName, incremental, lastModifiedField)
 	if err != nil {
 		return err
 	}
 
 	// Create a cursor for the source collection
-	cursor, err := createCursor(ctx, sourceColl, filter, batchSize)
+	cursor, err := createCursor(opCtx, sourceColl, filter, batchSize)
 	if err != nil {
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer cursor.Close(opCtx)
 
 	// Process documents in batches
-	if err := processBatches(ctx, cursor, targetColl, collName, incremental, batchSize); err != nil {
+	if err := processBatches(opCtx, cursor, targetColl, collName, incremental, batchSize); err != nil {
 		return err
 	}
 
 	// Copy indexes from source to target collection
-	if err := CopyCollectionIndexes(ctx, sourceDB, targetDB, collName); err != nil {
+	// Use a separate context for index operations
+	indexCtx, indexCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer indexCancel()
+	if err := CopyCollectionIndexes(indexCtx, sourceDB, targetDB, collName); err != nil {
 		fmt.Printf("  Warning: Failed to copy indexes for collection %s: %v\n", collName, err)
 		// Continue even if indexes copy fails - at least the data was copied
 	}
@@ -177,10 +196,13 @@ func CopyCollection(
 	return nil
 }
 
-// prepareFilter creates the appropriate query filter based on the incremental flag
-func prepareFilter(
+// This function was removed as it's no longer used and replaced by prepareFilterWithTarget
+
+// prepareFilterWithTarget creates the appropriate query filter based on the incremental flag
+// and accepts both source and target database clients
+func prepareFilterWithTarget(
 	ctx context.Context,
-	sourceDB *mongo.Database,
+	sourceDB, targetDB *mongo.Database,
 	collName string,
 	incremental bool,
 	lastModifiedField string,
@@ -193,8 +215,13 @@ func prepareFilter(
 
 	fmt.Printf("  Using incremental mode for collection: %s\n", collName)
 
-	// Create an incremental copy helper
-	helper := NewIncrementalCopyHelper(sourceDB.Client())
+	// Get source and target clients from the database objects
+	sourceClient := sourceDB.Client()
+	targetClient := targetDB.Client()
+
+	// Create helper with both source and target clients
+	// Default to using the target client for metadata storage (useTarget=true)
+	helper := NewIncrementalCopyHelper(sourceClient, targetClient, true)
 
 	// Get the incremental filter
 	dbName := sourceDB.Name()
@@ -236,8 +263,16 @@ func processBatches(
 	var batch []interface{}
 	var docCount int
 
+	// Read and process documents with regular status updates
+	progressUpdateInterval := 10 * time.Second
+	lastProgressTime := time.Now()
+
 	// Read and process documents
-	if err := readAndProcessDocuments(ctx, cursor, targetColl, collName, incremental, batchSize, &batch, &docCount); err != nil {
+	err := readAndProcessDocuments(
+		ctx, cursor, targetColl, collName, incremental, batchSize,
+		&batch, &docCount, &lastProgressTime, progressUpdateInterval,
+	)
+	if err != nil {
 		return err
 	}
 
@@ -265,8 +300,15 @@ func readAndProcessDocuments(
 	batchSize int,
 	batch *[]interface{},
 	docCount *int,
+	lastProgressTime *time.Time,
+	progressUpdateInterval time.Duration,
 ) error {
 	for cursor.Next(ctx) {
+		// Check for timeout on each iteration to fail fast
+		if ctx.Err() != nil {
+			return fmt.Errorf("context error during document processing: %w", ctx.Err())
+		}
+
 		var doc bson.M
 		if err := cursor.Decode(&doc); err != nil {
 			return fmt.Errorf("failed to decode document: %w", err)
@@ -283,6 +325,14 @@ func readAndProcessDocuments(
 			*docCount += len(*batch)
 			fmt.Printf("    Copied %d documents to %s (total: %d)\n", len(*batch), collName, *docCount)
 			*batch = (*batch)[:0] // Clear the batch
+
+			// Update progress timestamp
+			*lastProgressTime = time.Now()
+		} else if time.Since(*lastProgressTime) > progressUpdateInterval {
+			// Provide periodic progress updates even if batch isn't full
+			fmt.Printf("    In progress: %d documents in current batch for %s (total processed: %d)\n",
+				len(*batch), collName, *docCount)
+			*lastProgressTime = time.Now()
 		}
 	}
 	return nil

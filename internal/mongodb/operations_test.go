@@ -13,6 +13,74 @@ import (
 )
 
 // TestDocumentOperations tests various document operations using a table-driven approach
+// TestProgressUpdates tests the readAndProcessDocuments function with progress updates
+func TestProgressUpdates(t *testing.T) {
+	// Set up test context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Start MongoDB container
+	uri, container, err := startMongoContainer(ctx)
+	require.NoError(t, err, "Failed to start MongoDB container")
+	defer container.Terminate(ctx)
+
+	// Connect to MongoDB
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	require.NoError(t, err, "Failed to connect to MongoDB")
+	defer client.Disconnect(ctx)
+
+	// Create test database and collections
+	dbName := "test_progress_db"
+	sourceCollName := "source_coll"
+	targetCollName := "target_coll"
+
+	sourceDB := client.Database(dbName)
+	targetDB := client.Database(dbName)
+	sourceColl := sourceDB.Collection(sourceCollName)
+	targetColl := targetDB.Collection(targetCollName)
+
+	// Create test data - 50 documents
+	var docs []interface{}
+	for i := 0; i < 50; i++ {
+		docs = append(docs, bson.M{"_id": i, "value": i})
+	}
+
+	// Insert test data
+	_, err = sourceColl.InsertMany(ctx, docs)
+	require.NoError(t, err, "Failed to insert test data")
+
+	// Create a cursor
+	filter := bson.M{}
+	findOptions := options.Find().SetBatchSize(int32(10))
+	cursor, err := sourceColl.Find(ctx, filter, findOptions)
+	require.NoError(t, err, "Failed to create cursor")
+	defer cursor.Close(ctx)
+
+	// Set up for document processing
+	var batch []interface{}
+	docCount := 0
+	lastProgressTime := time.Now().Add(-1 * time.Minute) // Set to past to trigger immediate update
+	progressUpdateInterval := 10 * time.Millisecond
+
+	// Process documents
+	err = readAndProcessDocuments(
+		ctx, cursor, targetColl, targetCollName, false, 20,
+		&batch, &docCount, &lastProgressTime, progressUpdateInterval,
+	)
+	require.NoError(t, err, "Document processing should succeed")
+	
+	// Process the remaining batch
+	if len(batch) > 0 {
+		err = handleRemainingDocuments(ctx, targetColl, targetCollName, false, batch, &docCount)
+		require.NoError(t, err, "Handling remaining documents should succeed")
+	}
+
+	// Verify results - all documents should be processed 
+	count, err := targetColl.CountDocuments(ctx, bson.M{})
+	require.NoError(t, err, "Failed to count documents")
+	assert.Equal(t, int64(50), count, "All documents should be copied")
+}
+
 func TestDocumentOperations(t *testing.T) {
 	// Set up test context
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)

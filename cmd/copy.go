@@ -132,7 +132,7 @@ func init() {
 	copyCmd.Flags().StringVar(&sourceCACertFile, "source-ca-cert-file", "", "Path to CA certificate file for source MongoDB TLS connections")
 	copyCmd.Flags().StringVar(&targetCACertFile, "target-ca-cert-file", "", "Path to CA certificate file for target MongoDB TLS connections")
 	copyCmd.Flags().BoolVar(&incremental, "incremental", false, "Perform incremental copy (only copy new or updated documents)")
-	copyCmd.Flags().IntVar(&timeout, "timeout", 120, "Connection timeout in seconds")
+	copyCmd.Flags().IntVar(&timeout, "timeout", 30, "Connection timeout in seconds")
 	copyCmd.Flags().StringSliceVar(&databases, "databases", []string{}, "List of databases to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&collections, "collections", []string{}, "List of collections to copy (empty means all)")
 	copyCmd.Flags().StringSliceVar(&excludeDatabases, "exclude-databases", []string{}, "List of databases to exclude from copy")
@@ -149,19 +149,22 @@ func init() {
 func runCopy() error {
 	logCopyConfiguration()
 
-	// Set up the context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
+	// Create a background context without a global timeout
+	ctx := context.Background()
 
-	// Connect to source MongoDB
-	sourceClient, err := mongodb.NewClient(ctx, sourceURI, sourceCACertFile)
+	// Connect to source MongoDB with connection timeout
+	connCtx, connCancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	sourceClient, err := mongodb.NewClient(connCtx, sourceURI, sourceCACertFile)
+	connCancel()
 	if err != nil {
 		return fmt.Errorf("failed to connect to source MongoDB: %w", err)
 	}
 	defer sourceClient.Disconnect(ctx)
 
-	// Connect to target MongoDB
-	targetClient, err := mongodb.NewClient(ctx, targetURI, targetCACertFile)
+	// Connect to target MongoDB with connection timeout
+	connCtx, connCancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	targetClient, err := mongodb.NewClient(connCtx, targetURI, targetCACertFile)
+	connCancel()
 	if err != nil {
 		return fmt.Errorf("failed to connect to target MongoDB: %w", err)
 	}
@@ -209,7 +212,8 @@ func logBasicConfig() {
 	}
 	fmt.Printf("Incremental mode: %v\n", incremental)
 	fmt.Printf("Batch size: %d\n", batchSize)
-	fmt.Printf("Connection timeout: %d seconds\n", timeout)
+	fmt.Printf("Connection timeout: %d seconds (used only for initial connections)\n", timeout)
+	fmt.Println("Note: Longer timeouts are used automatically for data operations")
 }
 
 // logIncrementalConfig logs the incremental copy configuration

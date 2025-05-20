@@ -100,6 +100,19 @@ Incremental copy with custom last modified field:
 nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --incremental --last-modified-field="updatedAt"
 ```
 
+Incremental copy when source database user doesn't have permissions for metadata:
+```bash
+nmongo copy --source "mongodb://readonly-user:pwd@source-host:27017" --target "mongodb://readwrite-user:pwd@dest-host:27017" --incremental
+```
+
+Note: The incremental copy feature now automatically detects if the source database user doesn't have sufficient permissions and will store the metadata in the target database instead. By default, the metadata for tracking incremental copies is stored in the target database, which is usually preferable as:
+
+1. Source databases often have read-only permissions
+2. Target databases typically have write permissions required for metadata
+3. This maintains a single source of truth for synchronization state
+
+In rare cases where the target database doesn't have appropriate permissions, the system will automatically attempt to use the source database for metadata storage.
+
 Save configuration for future use:
 ```bash
 nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --save-config
@@ -157,19 +170,29 @@ nmongo copy --source "mongodb://user:password@your-cluster.mongodb.net:27018/" \
             --last-modified-field createdAt
 ```
 
-### Connection Timeout 
+### Connection and Operation Timeouts
 
-For slow connections or when connecting to remote cloud databases, you may need to increase the connection timeout:
+The application has an enhanced timeout system:
+
+1. **Connection Timeout**: Controlled by the `--timeout` flag and only applies to the initial connection
+2. **Operation Timeouts**: Longer timeouts are automatically used for data operations:
+   - 30 minutes for data cursors 
+   - 5 minutes for index operations
+   - 5 minutes for socket timeouts
+
+Example of setting the connection timeout:
 
 ```bash
 nmongo copy --source "mongodb://user:password@your-mongodb-host:27018/" \
             --target "mongodb://localhost:27017" \
-            --source-ca-cert-file /path/to/source-certificate.crt \
-            --target-ca-cert-file /path/to/target-certificate.crt \
-            --timeout 120
+            --timeout 60
 ```
 
-The default timeout is now 120 seconds, which should be sufficient for most cloud connections.
+For large databases that were failing with timeout errors, you should no longer need to increase the timeout value since data operations now use separate, longer timeouts automatically.
+
+#### Progress Updates
+
+The application now displays regular progress updates every 10 seconds during data copying operations, helping you monitor long-running operations.
 
 ### Programmatic Usage
 
