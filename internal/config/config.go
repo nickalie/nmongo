@@ -13,25 +13,30 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	SourceURI   string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
-	TargetURI   string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
-	Incremental bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
-	Timeout     int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
-	Databases   []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
-	Collections []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
-	BatchSize   int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
+	SourceURI        string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
+	TargetURI        string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
+	Incremental      bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
+	Timeout          int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
+	Databases        []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
+	Collections      []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
+	ExcludeDatabases []string `mapstructure:"excludeDatabases" json:"excludeDatabases" yaml:"excludeDatabases" toml:"excludeDatabases"`
+	// Split struct tags to avoid linter line length warning
+	ExcludeCollections []string `mapstructure:"excludeCollections" json:"excludeCollections" yaml:"excludeCollections" toml:"excludeCollections"` //nolint:lll // linter line length warning
+	BatchSize          int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		SourceURI:   "",
-		TargetURI:   "",
-		Incremental: false,
-		Timeout:     30,
-		Databases:   []string{},
-		Collections: []string{},
-		BatchSize:   1000,
+		SourceURI:          "",
+		TargetURI:          "",
+		Incremental:        false,
+		Timeout:            30,
+		Databases:          []string{},
+		Collections:        []string{},
+		ExcludeDatabases:   []string{},
+		ExcludeCollections: []string{},
+		BatchSize:          10000,
 	}
 }
 
@@ -48,6 +53,8 @@ func LoadConfig(filePath string) (*Config, error) {
 	v.SetDefault("timeout", config.Timeout)
 	v.SetDefault("databases", config.Databases)
 	v.SetDefault("collections", config.Collections)
+	v.SetDefault("excludeDatabases", config.ExcludeDatabases)
+	v.SetDefault("excludeCollections", config.ExcludeCollections)
 	v.SetDefault("batchSize", config.BatchSize)
 
 	// Configure Viper to use the file
@@ -88,6 +95,8 @@ func SaveConfig(config *Config, filePath string) error {
 	v.Set("timeout", config.Timeout)
 	v.Set("databases", config.Databases)
 	v.Set("collections", config.Collections)
+	v.Set("excludeDatabases", config.ExcludeDatabases)
+	v.Set("excludeCollections", config.ExcludeCollections)
 	v.Set("batchSize", config.BatchSize)
 
 	// Set the config file
