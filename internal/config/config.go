@@ -23,6 +23,7 @@ type Config struct {
 	// Split struct tags to avoid linter line length warning
 	ExcludeCollections []string `mapstructure:"excludeCollections" json:"excludeCollections" yaml:"excludeCollections" toml:"excludeCollections"` //nolint:lll // linter line length warning
 	BatchSize          int      `mapstructure:"batchSize" json:"batchSize" yaml:"batchSize" toml:"batchSize"`
+	LastModifiedField  string   `mapstructure:"lastModifiedField" json:"lastModifiedField" yaml:"lastModifiedField" toml:"lastModifiedField"`
 }
 
 // DefaultConfig returns the default configuration
@@ -37,6 +38,7 @@ func DefaultConfig() *Config {
 		ExcludeDatabases:   []string{},
 		ExcludeCollections: []string{},
 		BatchSize:          10000,
+		LastModifiedField:  "lastModified",
 	}
 }
 
@@ -56,6 +58,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	v.SetDefault("excludeDatabases", config.ExcludeDatabases)
 	v.SetDefault("excludeCollections", config.ExcludeCollections)
 	v.SetDefault("batchSize", config.BatchSize)
+	v.SetDefault("lastModifiedField", config.LastModifiedField)
 
 	// Configure Viper to use the file
 	v.SetConfigFile(filePath)
@@ -98,6 +101,7 @@ func SaveConfig(config *Config, filePath string) error {
 	v.Set("excludeDatabases", config.ExcludeDatabases)
 	v.Set("excludeCollections", config.ExcludeCollections)
 	v.Set("batchSize", config.BatchSize)
+	v.Set("lastModifiedField", config.LastModifiedField)
 
 	// Set the config file
 	v.SetConfigFile(filePath)

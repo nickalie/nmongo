@@ -78,9 +78,9 @@ func (h *IncrementalCopyHelper) UpdateLastSyncTime(ctx context.Context, dbName, 
 }
 
 // PrepareIncrementalFilter prepares a filter for incremental copying
-// This is a placeholder. In a real-world scenario, MongoDB documents would have
-// a field like 'lastModified' that would be used for incremental copying
-func (h *IncrementalCopyHelper) PrepareIncrementalFilter(ctx context.Context, dbName, collName string) (bson.M, error) {
+// It uses the specified lastModifiedField to filter documents that were modified
+// after the last synchronization time
+func (h *IncrementalCopyHelper) PrepareIncrementalFilter(ctx context.Context, dbName, collName, lastModifiedField string) (bson.M, error) {
 	lastSyncTime, err := h.GetLastSyncTime(ctx, dbName, collName)
 	if err != nil {
 		return nil, err
@@ -91,19 +91,17 @@ func (h *IncrementalCopyHelper) PrepareIncrementalFilter(ctx context.Context, db
 		return bson.M{}, nil
 	}
 
-	// In a real MongoDB schema, you would have a lastModified field that you would query
-	// filter = bson.M{"lastModified": bson.M{"$gt": lastSyncTime}}
+	// If lastModifiedField is specified, use it to filter documents
+	if lastModifiedField != "" {
+		filter := bson.M{lastModifiedField: bson.M{"$gt": lastSyncTime}}
+		fmt.Printf("  Using last modified field '%s' for incremental filtering\n", lastModifiedField)
+		return filter, nil
+	}
 
-	// Since we can't assume a lastModified field exists, this is just a placeholder
-	// In a real implementation, either:
-	// 1. Use a lastModified field in documents
-	// 2. Use MongoDB change streams for real-time synchronization
-	// 3. Use _id ObjectID timestamps as a heuristic (not accurate for custom _ids)
-
-	// Just return an empty filter for now (will copy all documents)
-	// With a note to the user that proper incremental filtering requires a lastModified field
+	// If no lastModifiedField specified, warn the user
 	fmt.Printf("  Note: Proper incremental filtering requires a lastModified field in documents.\n")
 	fmt.Printf("  Without it, all documents will be copied and duplicates handled on insert.\n")
+	fmt.Printf("  Consider using --last-modified-field to specify the field that tracks changes.\n")
 
 	return bson.M{}, nil
 }

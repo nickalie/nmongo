@@ -20,6 +20,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Empty(t, config.Databases, "Default Databases should be empty")
 	assert.Empty(t, config.Collections, "Default Collections should be empty")
 	assert.Equal(t, 10000, config.BatchSize, "Default BatchSize should be 10000")
+	assert.Equal(t, "lastModified", config.LastModifiedField, "Default LastModifiedField should be 'lastModified'")
 }
 
 func TestConfigSaveLoadFormatTypes(t *testing.T) {
@@ -36,13 +37,14 @@ func TestConfigSaveLoadFormatTypes(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	// Create a test config
 	testConfig := &Config{
-		SourceURI:   "mongodb://source:27017",
-		TargetURI:   "mongodb://dest:27017",
-		Incremental: true,
-		Timeout:     60,
-		Databases:   []string{"db1", "db2"},
-		Collections: []string{"coll1", "coll2"},
-		BatchSize:   2000,
+		SourceURI:         "mongodb://source:27017",
+		TargetURI:         "mongodb://dest:27017",
+		Incremental:       true,
+		Timeout:           60,
+		Databases:         []string{"db1", "db2"},
+		Collections:       []string{"coll1", "coll2"},
+		BatchSize:         2000,
+		LastModifiedField: "updatedAt",
 	}
 
 	for _, format := range formats {
@@ -69,6 +71,7 @@ func TestConfigSaveLoadFormatTypes(t *testing.T) {
 			assert.Equal(t, testConfig.Databases, loadedConfig.Databases, "Loaded Databases should match")
 			assert.Equal(t, testConfig.Collections, loadedConfig.Collections, "Loaded Collections should match")
 			assert.Equal(t, testConfig.BatchSize, loadedConfig.BatchSize, "Loaded BatchSize should match")
+			assert.Equal(t, testConfig.LastModifiedField, loadedConfig.LastModifiedField, "Loaded LastModifiedField should match")
 		})
 	}
 }

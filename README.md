@@ -8,9 +8,10 @@ A Go-based CLI tool for MongoDB operations.
 
 - Copy all databases and collections from one MongoDB cluster to another
 - Support for incremental copying to only transfer new or updated documents
-- Filtering by specific databases or collections
+- Customizable field for tracking last modified documents in incremental copies
+- Include or exclude specific databases and collections
 - Adjustable batch size for optimized performance
-- Save and load configurations from files
+- Save and load configurations from files in multiple formats (JSON, YAML, TOML)
 
 ## Installation
 
@@ -46,9 +47,13 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--timeout`: Connection timeout in seconds (default: 30)
 - `--databases`: List of specific databases to copy (default: all non-system databases)
 - `--collections`: List of specific collections to copy (default: all non-system collections)
+- `--exclude-databases`: List of databases to exclude from copy
+- `--exclude-collections`: List of collections to exclude from copy
 - `--batch-size`: Batch size for document operations (default: 1000)
+- `--last-modified-field`: Field name to use for tracking document modifications in incremental copy (default: "lastModified")
 - `--config`: Path to configuration file
 - `--save-config`: Save current flags to configuration file
+- `--config-format`: Configuration file format for saving (json, yaml, or toml)
 
 ### Configuration Management
 
@@ -76,9 +81,19 @@ Copy specific databases:
 nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --databases="db1,db2"
 ```
 
+Exclude specific databases:
+```bash
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --exclude-databases="admin,local,config"
+```
+
 Incremental copy:
 ```bash
 nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --incremental
+```
+
+Incremental copy with custom last modified field:
+```bash
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --incremental --last-modified-field="updatedAt"
 ```
 
 Save configuration for future use:

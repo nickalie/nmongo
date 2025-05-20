@@ -95,6 +95,7 @@ func CopyCollection(
 	collName string,
 	incremental bool,
 	batchSize int,
+	lastModifiedField string,
 ) error {
 	fmt.Printf("  Copying collection: %s\n", collName)
 
@@ -103,7 +104,7 @@ func CopyCollection(
 	targetColl := targetDB.Collection(collName)
 
 	// Prepare filter for query
-	filter, err := prepareFilter(ctx, sourceDB, collName, incremental)
+	filter, err := prepareFilter(ctx, sourceDB, collName, incremental, lastModifiedField)
 	if err != nil {
 		return err
 	}
@@ -120,7 +121,13 @@ func CopyCollection(
 }
 
 // prepareFilter creates the appropriate query filter based on the incremental flag
-func prepareFilter(ctx context.Context, sourceDB *mongo.Database, collName string, incremental bool) (bson.M, error) {
+func prepareFilter(
+	ctx context.Context,
+	sourceDB *mongo.Database,
+	collName string,
+	incremental bool,
+	lastModifiedField string,
+) (bson.M, error) {
 	filter := bson.M{}
 
 	if !incremental {
@@ -135,7 +142,7 @@ func prepareFilter(ctx context.Context, sourceDB *mongo.Database, collName strin
 	// Get the incremental filter
 	dbName := sourceDB.Name()
 	var err error
-	filter, err = helper.PrepareIncrementalFilter(ctx, dbName, collName)
+	filter, err = helper.PrepareIncrementalFilter(ctx, dbName, collName, lastModifiedField)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare incremental filter: %w", err)
 	}
@@ -246,17 +253,67 @@ func handleRemainingDocuments(
 
 // insertBatch inserts a batch of documents into the target collection
 func insertBatch(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, incremental bool) error {
+	if !incremental {
+		return insertDocuments(ctx, targetColl, batch)
+	}
+
+	// In incremental mode, use upsert operations
+	return upsertDocuments(ctx, targetColl, batch)
+}
+
+// insertDocuments inserts documents without using upsert
+func insertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}) error {
 	opts := options.InsertMany().SetOrdered(false)
 	_, err := targetColl.InsertMany(ctx, batch, opts)
+	return err
+}
 
-	// Handle duplicate key errors for incremental copy
-	if err != nil && mongo.IsDuplicateKeyError(err) && incremental {
-		// In incremental mode, duplicate key errors are expected and can be ignored
-		// For a more sophisticated approach, we could update the existing documents
-		// instead of inserting new ones
-		fmt.Printf("    Some documents already exist (expected in incremental mode)\n")
+// upsertDocuments performs upsert operations for documents that may already exist
+func upsertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}) error {
+	bulkOps := prepareBulkOps(batch)
+
+	if len(bulkOps) == 0 {
 		return nil
 	}
 
-	return err
+	bulkOptions := options.BulkWrite().SetOrdered(false)
+	result, err := targetColl.BulkWrite(ctx, bulkOps, bulkOptions)
+
+	if err != nil {
+		return err
+	}
+
+	if result.UpsertedCount > 0 || result.ModifiedCount > 0 {
+		fmt.Printf("    Upserted: %d, Modified: %d (incremental mode)\n",
+			result.UpsertedCount, result.ModifiedCount)
+	}
+
+	return nil
+}
+
+// prepareBulkOps creates bulk operation models for documents
+func prepareBulkOps(batch []interface{}) []mongo.WriteModel {
+	bulkOps := make([]mongo.WriteModel, 0, len(batch))
+
+	for _, doc := range batch {
+		docMap, ok := doc.(bson.M)
+		if !ok {
+			continue
+		}
+
+		id, hasID := docMap["_id"]
+		if !hasID {
+			continue
+		}
+
+		upsert := true
+		updateModel := mongo.NewReplaceOneModel().
+			SetFilter(bson.M{"_id": id}).
+			SetReplacement(docMap).
+			SetUpsert(upsert)
+
+		bulkOps = append(bulkOps, updateModel)
+	}
+
+	return bulkOps
 }
