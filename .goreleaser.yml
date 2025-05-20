@@ -18,7 +18,6 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
-    dir: cmd
     goos:
       - linux
       - windows
