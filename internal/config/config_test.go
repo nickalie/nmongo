@@ -19,7 +19,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 30, config.Timeout, "Default Timeout should be 30")
 	assert.Empty(t, config.Databases, "Default Databases should be empty")
 	assert.Empty(t, config.Collections, "Default Collections should be empty")
-	assert.Equal(t, 1000, config.BatchSize, "Default BatchSize should be 1000")
+	assert.Equal(t, 10000, config.BatchSize, "Default BatchSize should be 10000")
 }
 
 func TestConfigSaveLoadFormatTypes(t *testing.T) {
