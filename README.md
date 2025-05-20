@@ -35,13 +35,13 @@ go build
 Copy data between MongoDB clusters:
 
 ```bash
-nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017"
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017"
 ```
 
 #### Options
 
 - `--source`: Source MongoDB connection string (required)
-- `--destination`: Destination MongoDB connection string (required)
+- `--target`: Target MongoDB connection string (required)
 - `--incremental`: Perform incremental copy (only copy new or updated documents)
 - `--timeout`: Connection timeout in seconds (default: 30)
 - `--databases`: List of specific databases to copy (default: all non-system databases)
@@ -68,22 +68,22 @@ nmongo config show
 
 Copy all databases:
 ```bash
-nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017"
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017"
 ```
 
 Copy specific databases:
 ```bash
-nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017" --databases="db1,db2"
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --databases="db1,db2"
 ```
 
 Incremental copy:
 ```bash
-nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017" --incremental
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --incremental
 ```
 
 Save configuration for future use:
 ```bash
-nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017" --save-config
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --save-config
 ```
 
 Use saved configuration:

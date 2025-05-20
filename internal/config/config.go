@@ -12,7 +12,7 @@ import (
 // Config represents the application configuration
 type Config struct {
 	SourceURI      string   `mapstructure:"sourceUri" json:"sourceUri" yaml:"sourceUri" toml:"sourceUri"`
-	DestinationURI string   `mapstructure:"destinationUri" json:"destinationUri" yaml:"destinationUri" toml:"destinationUri"`
+	TargetURI      string   `mapstructure:"targetUri" json:"targetUri" yaml:"targetUri" toml:"targetUri"`
 	Incremental    bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
 	Timeout        int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
 	Databases      []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
@@ -24,7 +24,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		SourceURI:      "",
-		DestinationURI: "",
+		TargetURI:      "",
 		Incremental:    false,
 		Timeout:        30,
 		Databases:      []string{},
@@ -39,10 +39,9 @@ func LoadConfig(filePath string) (*Config, error) {
 	
 	// Initialize viper
 	v := viper.New()
-	
-	// Set default values
+		// Set default values
 	v.SetDefault("sourceUri", config.SourceURI)
-	v.SetDefault("destinationUri", config.DestinationURI)
+	v.SetDefault("targetUri", config.TargetURI)
 	v.SetDefault("incremental", config.Incremental)
 	v.SetDefault("timeout", config.Timeout)
 	v.SetDefault("databases", config.Databases)
@@ -80,10 +79,9 @@ func SaveConfig(config *Config, filePath string) error {
 	
 	// Initialize Viper
 	v := viper.New()
-	
-	// Set the values from our config
+		// Set the values from our config
 	v.Set("sourceUri", config.SourceURI)
-	v.Set("destinationUri", config.DestinationURI)
+	v.Set("targetUri", config.TargetURI)
 	v.Set("incremental", config.Incremental)
 	v.Set("timeout", config.Timeout)
 	v.Set("databases", config.Databases)

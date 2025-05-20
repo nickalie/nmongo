@@ -17,7 +17,7 @@ import (
 
 var (
 	sourceURI      string
-	destinationURI string
+	targetURI      string
 	incremental    bool
 	timeout        int
 	databases      []string
@@ -33,7 +33,7 @@ var copyCmd = &cobra.Command{
 Supports incremental copying to only transfer new or updated documents.
 
 Example:
-  nmongo copy --source "mongodb://source-host:27017" --destination "mongodb://dest-host:27017" --incremental`,
+  nmongo copy --source "mongodb://source-host:27017" --target "mongodb://target-host:27017" --incremental`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load configuration from file if specified
 		if configFile != "" {
@@ -46,8 +46,8 @@ Example:
 			if sourceURI == "" {
 				sourceURI = cfg.SourceURI
 			}
-			if destinationURI == "" {
-				destinationURI = cfg.DestinationURI
+			if targetURI == "" {
+				targetURI = cfg.TargetURI
 			}
 			if cmd.Flags().Changed("incremental") == false {
 				incremental = cfg.Incremental
@@ -67,15 +67,14 @@ Example:
 		}
 
 		// Save configuration if requested
-		if saveConfig {
-			configPath, err := config.GetConfigFilePath()
+		if saveConfig {			configPath, err := config.GetConfigFilePath()
 			if err != nil {
 				log.Fatalf("Error getting configuration path: %v", err)
 			}
-
+			
 			cfg := &config.Config{
 				SourceURI:      sourceURI,
-				DestinationURI: destinationURI,
+				TargetURI:      targetURI,
 				Incremental:    incremental,
 				Timeout:        timeout,
 				Databases:      databases,
@@ -98,10 +97,9 @@ Example:
 
 func init() {
 	rootCmd.AddCommand(copyCmd)
-
 	// Add flags for the copy command
 	copyCmd.Flags().StringVar(&sourceURI, "source", "", "Source MongoDB connection string (required)")
-	copyCmd.Flags().StringVar(&destinationURI, "destination", "", "Destination MongoDB connection string (required)")
+	copyCmd.Flags().StringVar(&targetURI, "target", "", "Target MongoDB connection string (required)")
 	copyCmd.Flags().BoolVar(&incremental, "incremental", false, "Perform incremental copy (only copy new or updated documents)")
 	copyCmd.Flags().IntVar(&timeout, "timeout", 30, "Connection timeout in seconds")
 	copyCmd.Flags().StringSliceVar(&databases, "databases", []string{}, "List of databases to copy (empty means all)")
@@ -110,13 +108,13 @@ func init() {
 
 	// Mark required flags
 	copyCmd.MarkFlagRequired("source")
-	copyCmd.MarkFlagRequired("destination")
+	copyCmd.MarkFlagRequired("target")
 }
 
 func runCopy() error {
 	fmt.Println("Starting MongoDB copy operation")
 	fmt.Printf("Source: %s\n", sourceURI)
-	fmt.Printf("Destination: %s\n", destinationURI)
+	fmt.Printf("Target: %s\n", targetURI)
 	fmt.Printf("Incremental mode: %v\n", incremental)
 
 	// Set up the context with timeout
@@ -128,14 +126,12 @@ func runCopy() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to source MongoDB: %w", err)
 	}
-	defer sourceClient.Disconnect(ctx)
-
-	// Connect to destination MongoDB
-	destClient, err := mongodb.NewClient(ctx, destinationURI)
+	defer sourceClient.Disconnect(ctx)	// Connect to target MongoDB
+	targetClient, err := mongodb.NewClient(ctx, targetURI)
 	if err != nil {
-		return fmt.Errorf("failed to connect to destination MongoDB: %w", err)
+		return fmt.Errorf("failed to connect to target MongoDB: %w", err)
 	}
-	defer destClient.Disconnect(ctx)
+	defer targetClient.Disconnect(ctx)
 
 	// Get list of databases to copy
 	var dbsToCopy []string
@@ -147,10 +143,9 @@ func runCopy() error {
 			return fmt.Errorf("failed to get databases: %w", err)
 		}
 	}
-
 	// Copy each database
 	for _, dbName := range dbsToCopy {
-		if err := copyDatabase(ctx, sourceClient, destClient, dbName); err != nil {
+		if err := copyDatabase(ctx, sourceClient, targetClient, dbName); err != nil {
 			return fmt.Errorf("failed to copy database %s: %w", dbName, err)
 		}
 	}
@@ -159,13 +154,12 @@ func runCopy() error {
 	return nil
 }
 
-// copyDatabase copies a single database from source to destination
-func copyDatabase(ctx context.Context, sourceClient, destClient *mongodb.Client, dbName string) error {
+// copyDatabase copies a single database from source to target
+func copyDatabase(ctx context.Context, sourceClient, targetClient *mongodb.Client, dbName string) error {
 	fmt.Printf("Copying database: %s\n", dbName)
-
 	// Get the database
 	sourceDB := sourceClient.GetDatabase(dbName)
-	destDB := destClient.GetDatabase(dbName)
+	targetDB := targetClient.GetDatabase(dbName)
 
 	// Get collections to copy
 	var collsToCopy []string
@@ -178,10 +172,9 @@ func copyDatabase(ctx context.Context, sourceClient, destClient *mongodb.Client,
 			return fmt.Errorf("failed to get collections for database %s: %w", dbName, err)
 		}
 	}
-
 	// Copy each collection
 	for _, collName := range collsToCopy {
-		if err := mongodb.CopyCollection(ctx, sourceDB, destDB, collName, incremental, batchSize); err != nil {
+		if err := mongodb.CopyCollection(ctx, sourceDB, targetDB, collName, incremental, batchSize); err != nil {
 			return fmt.Errorf("failed to copy collection %s.%s: %w", dbName, collName, err)
 		}
 	}
@@ -212,17 +205,15 @@ func getCollections(ctx context.Context, db *mongo.Database, requestedColls []st
 	return filteredColls, nil
 }
 
-// copyCollection copies a single collection from source to destination
-func copyCollection(ctx context.Context, sourceDB, destDB *mongo.Database, collName string) error {
-	fmt.Printf("  Copying collection: %s\n", collName)
+// copyCollection copies a single collection from source to target
+func copyCollection(ctx context.Context, sourceDB, targetDB *mongo.Database, collName string) error {	fmt.Printf("  Copying collection: %s\n", collName)
 
 	sourceColl := sourceDB.Collection(collName)
-	destColl := destDB.Collection(collName)
-
+	targetColl := targetDB.Collection(collName)
 	// Define the query filter based on incremental flag
 	filter := bson.M{}
 	if incremental {
-		// In incremental mode, we need to find documents that don't exist in the destination
+		// In incremental mode, we need to find documents that don't exist in the target
 		// or that have been updated since the last copy
 		// This is a simplified approach and might need refinement based on your requirements
 		fmt.Printf("  Using incremental mode for collection: %s\n", collName)
@@ -248,11 +239,10 @@ func copyCollection(ctx context.Context, sourceDB, destDB *mongo.Database, collN
 			return err
 		}
 		batch = append(batch, doc)
-
 		// If batch is full, insert the batch
 		if len(batch) >= batchSize {
 			if len(batch) > 0 {
-				_, err := destColl.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
+				_, err := targetColl.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
 				if err != nil {
 					// Handle duplicate key errors for incremental copy
 					if mongo.IsDuplicateKeyError(err) && incremental {

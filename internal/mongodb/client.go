@@ -86,16 +86,16 @@ func (c *Client) GetDatabase(dbName string) *mongo.Database {
 	return c.client.Database(dbName)
 }
 
-// CopyCollection copies documents from source to destination collection
+// CopyCollection copies documents from source to target collection
 func CopyCollection(
 	ctx context.Context,
-	sourceDB, destDB *mongo.Database,
+	sourceDB, targetDB *mongo.Database,
 	collName string,
 	incremental bool,
 	batchSize int,
 ) error {
 	sourceColl := sourceDB.Collection(collName)
-	destColl := destDB.Collection(collName)
+	targetColl := targetDB.Collection(collName)
 
 	// Define the query filter based on incremental flag
 	filter := bson.M{}
@@ -140,10 +140,9 @@ func CopyCollection(
 		}
 
 		batch = append(batch, doc)
-
 		// If batch is full, insert the batch
 		if len(batch) >= batchSize {
-			if err := insertBatch(ctx, destColl, batch, incremental); err != nil {
+			if err := insertBatch(ctx, targetColl, batch, incremental); err != nil {
 				return err
 			}
 
@@ -155,7 +154,7 @@ func CopyCollection(
 
 	// Insert any remaining documents
 	if len(batch) > 0 {
-		if err := insertBatch(ctx, destColl, batch, incremental); err != nil {
+		if err := insertBatch(ctx, targetColl, batch, incremental); err != nil {
 			return err
 		}
 
@@ -171,10 +170,10 @@ func CopyCollection(
 	return nil
 }
 
-// insertBatch inserts a batch of documents into the destination collection
-func insertBatch(ctx context.Context, destColl *mongo.Collection, batch []interface{}, incremental bool) error {
+// insertBatch inserts a batch of documents into the target collection
+func insertBatch(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, incremental bool) error {
 	opts := options.InsertMany().SetOrdered(false)
-	_, err := destColl.InsertMany(ctx, batch, opts)
+	_, err := targetColl.InsertMany(ctx, batch, opts)
 
 	// Handle duplicate key errors for incremental copy
 	if err != nil && mongo.IsDuplicateKeyError(err) && incremental {

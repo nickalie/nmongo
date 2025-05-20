@@ -60,7 +60,7 @@ var configShowCmd = &cobra.Command{
 		// Display configuration
 		log.Println("Current configuration:")
 		log.Printf("  Source URI: %s", cfg.SourceURI)
-		log.Printf("  Destination URI: %s", cfg.DestinationURI)
+		log.Printf("  Target URI: %s", cfg.TargetURI)
 		log.Printf("  Incremental: %v", cfg.Incremental)
 		log.Printf("  Timeout: %d seconds", cfg.Timeout)
 		log.Printf("  Databases: %v", cfg.Databases)
@@ -95,7 +95,7 @@ var configSaveCmd = &cobra.Command{
 		// Create config from command-line flags
 		cfg := &config.Config{
 			SourceURI:      sourceURI,
-			DestinationURI: destinationURI,
+			TargetURI:      targetURI,
 			Incremental:    incremental,
 			Timeout:        timeout,
 			Databases:      databases,

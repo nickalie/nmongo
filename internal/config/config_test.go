@@ -12,10 +12,9 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	// Get default config
 	config := DefaultConfig()
-
 	// Verify default values
 	assert.Equal(t, "", config.SourceURI, "Default SourceURI should be empty")
-	assert.Equal(t, "", config.DestinationURI, "Default DestinationURI should be empty")
+	assert.Equal(t, "", config.TargetURI, "Default TargetURI should be empty")
 	assert.False(t, config.Incremental, "Default Incremental should be false")
 	assert.Equal(t, 30, config.Timeout, "Default Timeout should be 30")
 	assert.Empty(t, config.Databases, "Default Databases should be empty")
@@ -35,11 +34,10 @@ func TestConfigSaveLoadFormatTypes(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "config-test")
 	require.NoError(t, err, "Failed to create temp directory")
 	defer os.RemoveAll(tempDir)
-	
-	// Create a test config
+		// Create a test config
 	testConfig := &Config{
 		SourceURI:      "mongodb://source:27017",
-		DestinationURI: "mongodb://dest:27017",
+		TargetURI:      "mongodb://dest:27017",
 		Incremental:    true,
 		Timeout:        60,
 		Databases:      []string{"db1", "db2"},
@@ -63,10 +61,9 @@ func TestConfigSaveLoadFormatTypes(t *testing.T) {
 			// Load the config
 			loadedConfig, err := LoadConfig(configFilePath)
 			require.NoError(t, err, "Failed to load config")
-			
-			// Verify loaded config matches the original
+					// Verify loaded config matches the original
 			assert.Equal(t, testConfig.SourceURI, loadedConfig.SourceURI, "Loaded SourceURI should match")
-			assert.Equal(t, testConfig.DestinationURI, loadedConfig.DestinationURI, "Loaded DestinationURI should match")
+			assert.Equal(t, testConfig.TargetURI, loadedConfig.TargetURI, "Loaded TargetURI should match")
 			assert.Equal(t, testConfig.Incremental, loadedConfig.Incremental, "Loaded Incremental should match")
 			assert.Equal(t, testConfig.Timeout, loadedConfig.Timeout, "Loaded Timeout should match")
 			assert.Equal(t, testConfig.Databases, loadedConfig.Databases, "Loaded Databases should match")
