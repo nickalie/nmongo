@@ -65,13 +65,13 @@ func TestProgressUpdates(t *testing.T) {
 	// Process documents
 	err = readAndProcessDocuments(
 		ctx, cursor, targetColl, targetCollName, false, 20,
-		&batch, &docCount, &lastProgressTime, progressUpdateInterval,
+		&batch, &docCount, &lastProgressTime, progressUpdateInterval, 5,
 	)
 	require.NoError(t, err, "Document processing should succeed")
 
 	// Process the remaining batch
 	if len(batch) > 0 {
-		err = handleRemainingDocuments(ctx, targetColl, targetCollName, false, batch, &docCount)
+		err = handleRemainingDocuments(ctx, targetColl, targetCollName, false, batch, &docCount, 5)
 		require.NoError(t, err, "Handling remaining documents should succeed")
 	}
 

@@ -152,6 +152,7 @@ func CopyCollection(
 	incremental bool,
 	batchSize int,
 	lastModifiedField string,
+	retryAttempts int,
 ) error {
 	fmt.Printf("  Copying collection: %s\n", collName)
 
@@ -180,7 +181,7 @@ func CopyCollection(
 	defer cursor.Close(opCtx)
 
 	// Process documents in batches
-	if err := processBatches(opCtx, cursor, targetColl, collName, incremental, batchSize); err != nil {
+	if err := processBatches(opCtx, cursor, targetColl, collName, incremental, batchSize, retryAttempts); err != nil {
 		return err
 	}
 
@@ -259,6 +260,7 @@ func processBatches(
 	collName string,
 	incremental bool,
 	batchSize int,
+	retryAttempts int,
 ) error {
 	var batch []interface{}
 	var docCount int
@@ -270,14 +272,14 @@ func processBatches(
 	// Read and process documents
 	err := readAndProcessDocuments(
 		ctx, cursor, targetColl, collName, incremental, batchSize,
-		&batch, &docCount, &lastProgressTime, progressUpdateInterval,
+		&batch, &docCount, &lastProgressTime, progressUpdateInterval, retryAttempts,
 	)
 	if err != nil {
 		return err
 	}
 
 	// Insert any remaining documents
-	if err := handleRemainingDocuments(ctx, targetColl, collName, incremental, batch, &docCount); err != nil {
+	if err := handleRemainingDocuments(ctx, targetColl, collName, incremental, batch, &docCount, retryAttempts); err != nil {
 		return err
 	}
 
@@ -302,6 +304,7 @@ func readAndProcessDocuments(
 	docCount *int,
 	lastProgressTime *time.Time,
 	progressUpdateInterval time.Duration,
+	retryAttempts int,
 ) error {
 	for cursor.Next(ctx) {
 		// Check for timeout on each iteration to fail fast
@@ -318,7 +321,7 @@ func readAndProcessDocuments(
 
 		// If batch is full, insert the batch
 		if len(*batch) >= batchSize {
-			if err := insertBatch(ctx, targetColl, *batch, incremental); err != nil {
+			if err := insertBatch(ctx, targetColl, *batch, incremental, retryAttempts); err != nil {
 				return err
 			}
 
@@ -346,9 +349,10 @@ func handleRemainingDocuments(
 	incremental bool,
 	batch []interface{},
 	docCount *int,
+	retryAttempts int,
 ) error {
 	if len(batch) > 0 {
-		if err := insertBatch(ctx, targetColl, batch, incremental); err != nil {
+		if err := insertBatch(ctx, targetColl, batch, incremental, retryAttempts); err != nil {
 			return err
 		}
 
@@ -359,43 +363,51 @@ func handleRemainingDocuments(
 }
 
 // insertBatch inserts a batch of documents into the target collection
-func insertBatch(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, incremental bool) error {
+func insertBatch(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, incremental bool, retryAttempts int) error {
 	if !incremental {
-		return insertDocuments(ctx, targetColl, batch)
+		return insertDocuments(ctx, targetColl, batch, retryAttempts)
 	}
 
 	// In incremental mode, use upsert operations
-	return upsertDocuments(ctx, targetColl, batch)
+	return upsertDocuments(ctx, targetColl, batch, retryAttempts)
 }
 
 // insertDocuments inserts documents without using upsert
-func insertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}) error {
-	opts := options.InsertMany().SetOrdered(false)
-	_, err := targetColl.InsertMany(ctx, batch, opts)
-	return err
+func insertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, retryAttempts int) error {
+	operation := fmt.Sprintf("Insert %d documents", len(batch))
+
+	return RetryWithBackoff(ctx, retryAttempts, operation, func() error {
+		opts := options.InsertMany().SetOrdered(false)
+		_, err := targetColl.InsertMany(ctx, batch, opts)
+		return err
+	})
 }
 
 // upsertDocuments performs upsert operations for documents that may already exist
-func upsertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}) error {
+func upsertDocuments(ctx context.Context, targetColl *mongo.Collection, batch []interface{}, retryAttempts int) error {
 	bulkOps := prepareBulkOps(batch)
 
 	if len(bulkOps) == 0 {
 		return nil
 	}
 
-	bulkOptions := options.BulkWrite().SetOrdered(false)
-	result, err := targetColl.BulkWrite(ctx, bulkOps, bulkOptions)
+	operation := fmt.Sprintf("Upsert %d documents", len(batch))
 
-	if err != nil {
-		return err
-	}
+	return RetryWithBackoff(ctx, retryAttempts, operation, func() error {
+		bulkOptions := options.BulkWrite().SetOrdered(false)
+		result, err := targetColl.BulkWrite(ctx, bulkOps, bulkOptions)
 
-	if result.UpsertedCount > 0 || result.ModifiedCount > 0 {
-		fmt.Printf("    Upserted: %d, Modified: %d (incremental mode)\n",
-			result.UpsertedCount, result.ModifiedCount)
-	}
+		if err != nil {
+			return err
+		}
 
-	return nil
+		if result.UpsertedCount > 0 || result.ModifiedCount > 0 {
+			fmt.Printf("    Upserted: %d, Modified: %d (incremental mode)\n",
+				result.UpsertedCount, result.ModifiedCount)
+		}
+
+		return nil
+	})
 }
 
 // prepareBulkOps creates bulk operation models for documents

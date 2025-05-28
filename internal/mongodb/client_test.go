@@ -151,6 +151,7 @@ func TestOperationTimeouts(t *testing.T) {
 		false,
 		10, // Small batch size to test multiple batches
 		"lastModified",
+		5, // retry attempts
 	)
 	require.NoError(t, err, "CopyCollection should succeed with a background context")
 

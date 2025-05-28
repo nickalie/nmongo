@@ -11,6 +11,7 @@ A Go-based CLI tool for MongoDB operations.
 - Incremental copying to only transfer new or updated documents
 - Include or exclude specific databases and collections
 - Adjustable batch size for optimized performance
+- Automatic retry with exponential backoff for transient failures
 - Save and load configurations from files in multiple formats (JSON, YAML, TOML)
 - Support for secure connections with custom CA certificates
 
@@ -54,6 +55,7 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--exclude-collections`: List of collections to exclude from copy
 - `--batch-size`: Batch size for document operations (default: 1000)
 - `--last-modified-field`: Field name to use for tracking document modifications in incremental copy (default: "lastModified")
+- `--retry-attempts`: Number of retry attempts for failed operations (default: 5)
 - `--config`: Path to configuration file
 - `--save-config`: Save current flags to configuration file
 - `--config-format`: Configuration file format for saving (json, yaml, or toml)
@@ -147,6 +149,11 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 Use saved configuration:
 ```bash
 nmongo copy
+```
+
+Copy with custom retry attempts:
+```bash
+nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --retry-attempts=10
 ```
 
 ### Compare Examples
@@ -246,6 +253,17 @@ For large databases that were failing with timeout errors, you should no longer 
 #### Progress Updates
 
 The application now displays regular progress updates every 10 seconds during data copying operations, helping you monitor long-running operations.
+
+#### Retry Mechanism
+
+The copy command includes automatic retry logic for handling transient failures:
+
+- **Default retry attempts**: 5 (configurable with `--retry-attempts`)
+- **Exponential backoff**: Starting at 100ms with up to 30 seconds maximum
+- **Retryable errors**: Network timeouts, connection failures, primary stepdowns, write conflicts
+- **Non-retryable errors**: Duplicate key errors, authentication failures, invalid operations
+
+The retry mechanism helps ensure reliable data copying even in the presence of temporary network issues or MongoDB cluster failovers.
 
 ### Programmatic Usage
 

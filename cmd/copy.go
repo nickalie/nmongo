@@ -25,6 +25,7 @@ var (
 	excludeCollections []string
 	batchSize          int
 	lastModifiedField  string
+	retryAttempts      int
 )
 
 // copyCmd represents the copy command
@@ -87,6 +88,9 @@ Examples:
 			if !cmd.Flags().Changed("last-modified-field") {
 				lastModifiedField = cfg.LastModifiedField
 			}
+			if !cmd.Flags().Changed("retry-attempts") && cfg.RetryAttempts > 0 {
+				retryAttempts = cfg.RetryAttempts
+			}
 		}
 
 		// Save configuration if requested
@@ -109,6 +113,7 @@ Examples:
 				ExcludeCollections: excludeCollections,
 				BatchSize:          batchSize,
 				LastModifiedField:  lastModifiedField,
+				RetryAttempts:      retryAttempts,
 			}
 
 			if err := config.SaveConfig(cfg, configPath); err != nil {
@@ -140,6 +145,7 @@ func init() {
 	copyCmd.Flags().IntVar(&batchSize, "batch-size", 10000, "Batch size for document operations")
 	copyCmd.Flags().StringVar(&lastModifiedField, "last-modified-field", "lastModified",
 		"Field name to use for tracking document modifications in incremental copy")
+	copyCmd.Flags().IntVar(&retryAttempts, "retry-attempts", 5, "Number of retry attempts for failed operations")
 
 	// Mark required flags
 	copyCmd.MarkFlagRequired("source")
@@ -213,6 +219,7 @@ func logBasicConfig() {
 	fmt.Printf("Incremental mode: %v\n", incremental)
 	fmt.Printf("Batch size: %d\n", batchSize)
 	fmt.Printf("Connection timeout: %d seconds (used only for initial connections)\n", timeout)
+	fmt.Printf("Retry attempts: %d\n", retryAttempts)
 	fmt.Println("Note: Longer timeouts are used automatically for data operations")
 }
 
@@ -323,7 +330,9 @@ func copyDatabase(ctx context.Context, sourceClient, targetClient *mongodb.Clien
 	fmt.Printf("  Copying %d collections in database %s\n", len(collsToCopy), dbName)
 	for _, collName := range collsToCopy {
 		fmt.Printf("    Copying collection: %s.%s\n", dbName, collName)
-		if err := mongodb.CopyCollection(ctx, sourceDB, targetDB, collName, incremental, batchSize, lastModifiedField); err != nil {
+		err := mongodb.CopyCollection(ctx, sourceDB, targetDB, collName,
+			incremental, batchSize, lastModifiedField, retryAttempts)
+		if err != nil {
 			return fmt.Errorf("failed to copy collection %s.%s: %w", dbName, collName, err)
 		}
 	}

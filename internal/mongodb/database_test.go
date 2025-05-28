@@ -91,7 +91,7 @@ func TestDatabaseCopy(t *testing.T) {
 	require.NoError(t, err, "Failed to list collections")
 	// Copy each collection
 	for _, collName := range collNames {
-		err = CopyCollection(ctx, sourceDBClient, targetDBClient, collName, false, 10, "")
+		err = CopyCollection(ctx, sourceDBClient, targetDBClient, collName, false, 10, "", 5)
 		require.NoError(t, err, "Failed to copy collection %s", collName)
 	}
 	// Verify all collections and documents were copied

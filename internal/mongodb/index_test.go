@@ -100,7 +100,7 @@ func TestIndexCopy(t *testing.T) {
 	targetDB := targetClient.GetDatabase(dbName)
 
 	// Copy the collection
-	err = CopyCollection(ctx, sourceDB, targetDB, collName, false, 10, "")
+	err = CopyCollection(ctx, sourceDB, targetDB, collName, false, 10, "", 5)
 	require.NoError(t, err, "Failed to copy collection")
 
 	// Verify indexes were copied to target collection

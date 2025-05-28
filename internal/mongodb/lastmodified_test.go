@@ -63,7 +63,7 @@ func TestIncrementalCopyWithLastModifiedField(t *testing.T) {
 	sourceDB := sourceClient.GetDatabase(dbName)
 	targetDB := targetClient.GetDatabase(dbName)
 
-	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, lastModField)
+	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, lastModField, 5)
 	require.NoError(t, err, "Failed to copy collection")
 
 	// Verify initial documents were copied
@@ -92,7 +92,7 @@ func TestIncrementalCopyWithLastModifiedField(t *testing.T) {
 	require.NoError(t, err, "Failed to insert new test documents")
 
 	// Second copy - should only copy new and updated documents
-	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, lastModField)
+	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, lastModField, 5)
 	require.NoError(t, err, "Failed to copy collection incrementally")
 
 	// Verify new documents were added

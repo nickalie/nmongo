@@ -57,7 +57,7 @@ func TestIncrementalCopy(t *testing.T) {
 	sourceDB := sourceClient.GetDatabase(dbName)
 	targetDB := targetClient.GetDatabase(dbName)
 	// First copy - should copy all documents
-	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, "")
+	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, "", 5)
 	require.NoError(t, err, "Failed to copy collection")
 	// Verify documents were copied
 	targetColl := targetClient.GetDatabase(dbName).Collection(collName)
@@ -73,7 +73,7 @@ func TestIncrementalCopy(t *testing.T) {
 	_, err = sourceColl.InsertMany(ctx, newDocs)
 	require.NoError(t, err, "Failed to insert new test documents")
 	// Second copy - should only copy the new documents
-	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, "")
+	err = CopyCollection(ctx, sourceDB, targetDB, collName, true, 10, "", 5)
 	require.NoError(t, err, "Failed to copy collection incrementally")
 	// Verify all documents were copied
 	count, err = targetColl.CountDocuments(ctx, bson.M{})
