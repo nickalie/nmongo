@@ -8,41 +8,25 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupMongoContainer sets up a MongoDB container for testing
-func setupMongoContainer(t *testing.T) (testcontainers.Container, string) {
+func setupMongoContainer(t *testing.T) (*mongodb.MongoDBContainer, string) {
 	ctx := context.Background()
-	req := testcontainers.ContainerRequest{
-		Image:        "mongo:5.0",
-		ExposedPorts: []string{"27017/tcp"},
-		WaitingFor:   wait.ForLog("Waiting for connections"),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	container, err := mongodb.Run(ctx, "mongo:8.0")
 	if err != nil {
 		t.Fatalf("Failed to start MongoDB container: %v", err)
 	}
 
-	host, err := container.Host(ctx)
+	connectionString, err := container.ConnectionString(ctx)
 	if err != nil {
-		t.Fatalf("Failed to get MongoDB container host: %v", err)
+		t.Fatalf("Failed to get connection string: %v", err)
 	}
 
-	port, err := container.MappedPort(ctx, "27017")
-	if err != nil {
-		t.Fatalf("Failed to get MongoDB container port: %v", err)
-	}
-
-	connectionString := "mongodb://" + host + ":" + port.Port()
 	return container, connectionString
 }
 

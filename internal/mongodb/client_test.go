@@ -8,38 +8,22 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
 // startMongoContainer starts a MongoDB container and returns the connection URI
-func startMongoContainer(ctx context.Context) (string, testcontainers.Container, error) {
-	req := testcontainers.ContainerRequest{
-		Image:        "mongo:latest",
-		ExposedPorts: []string{"27017/tcp"},
-		WaitingFor:   wait.ForLog("Waiting for connections"),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+func startMongoContainer(ctx context.Context) (string, *mongodb.MongoDBContainer, error) {
+	container, err := mongodb.Run(ctx, "mongo:8.0")
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to start container: %w", err)
+		return "", nil, err
 	}
 
-	mappedPort, err := container.MappedPort(ctx, "27017")
+	uri, err := container.ConnectionString(ctx)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to get container port: %w", err)
+		return "", nil, err
 	}
 
-	host, err := container.Host(ctx)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to get container host: %w", err)
-	}
-
-	uri := fmt.Sprintf("mongodb://%s:%s", host, mappedPort.Port())
 	return uri, container, nil
 }
 
