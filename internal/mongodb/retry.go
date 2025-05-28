@@ -16,45 +16,70 @@ func RetryWithBackoff(ctx context.Context, attempts int, operation string, fn Re
 	var lastErr error
 
 	for attempt := 1; attempt <= attempts; attempt++ {
-		// Check context before attempting
-		if ctx.Err() != nil {
-			return fmt.Errorf("context canceled before attempt %d: %w", attempt, ctx.Err())
-		}
-
-		// Try the operation
-		err := fn()
+		// Execute one retry attempt
+		err := executeRetryAttempt(ctx, fn, attempt)
 		if err == nil {
 			return nil // Success
 		}
 
 		lastErr = err
 
-		// Check if error is retryable
-		if !isRetryableError(err) {
-			return fmt.Errorf("%s failed (non-retryable): %w", operation, err)
+		// Handle the error and decide whether to continue
+		shouldContinue, retErr := handleRetryError(err, operation, attempt, attempts)
+		if retErr != nil {
+			return retErr
 		}
-
-		// Don't retry on the last attempt
-		if attempt == attempts {
+		if !shouldContinue {
 			break
 		}
 
-		// Calculate backoff duration (exponential with jitter)
-		backoff := calculateBackoff(attempt)
-
-		fmt.Printf("    %s failed (attempt %d/%d), retrying in %v: %v\n",
-			operation, attempt, attempts, backoff, err)
-
-		// Wait with context cancellation support
-		select {
-		case <-time.After(backoff):
-			// Continue to next attempt
-		case <-ctx.Done():
-			return fmt.Errorf("context canceled during retry backoff: %w", ctx.Err())
+		// Wait before next attempt
+		if waitErr := waitForRetry(ctx, attempt, operation, attempts, err); waitErr != nil {
+			return waitErr
 		}
 	}
 
 	return fmt.Errorf("%s failed after %d attempts: %w", operation, attempts, lastErr)
+}
+
+// executeRetryAttempt executes a single retry attempt
+func executeRetryAttempt(ctx context.Context, fn RetryableFunc, attempt int) error {
+	// Check context before attempting
+	if ctx.Err() != nil {
+		return fmt.Errorf("context canceled before attempt %d: %w", attempt, ctx.Err())
+	}
+	return fn()
+}
+
+// handleRetryError processes an error and determines if retry should continue
+func handleRetryError(err error, operation string, attempt, maxAttempts int) (shouldContinue bool, retErr error) {
+	// Check if error is retryable
+	if !isRetryableError(err) {
+		return false, fmt.Errorf("%s failed (non-retryable): %w", operation, err)
+	}
+
+	// Don't retry on the last attempt
+	if attempt == maxAttempts {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// waitForRetry waits for the backoff period before the next retry attempt
+func waitForRetry(ctx context.Context, attempt int, operation string, maxAttempts int, err error) error {
+	backoff := calculateBackoff(attempt)
+
+	fmt.Printf("    %s failed (attempt %d/%d), retrying in %v: %v\n",
+		operation, attempt, maxAttempts, backoff, err)
+
+	// Wait with context cancellation support
+	select {
+	case <-time.After(backoff):
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled during retry backoff: %w", ctx.Err())
+	}
 }
 
 // isRetryableError determines if an error should trigger a retry
@@ -63,40 +88,54 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
-	// Check for specific MongoDB errors that are retryable
-	if mongo.IsTimeout(err) {
+	// Check basic MongoDB error types
+	if isBasicRetryableError(err) {
 		return true
 	}
 
-	if mongo.IsNetworkError(err) {
-		return true
-	}
-
-	// Check for write conflict errors (commonly retryable)
+	// Check command errors
 	if cmdErr, ok := err.(mongo.CommandError); ok {
-		switch cmdErr.Code {
-		case 112: // WriteConflict
-			return true
-		case 11000, 11001: // DuplicateKey errors in batch operations might be retryable
-			return false // Actually, duplicate key errors should not be retried
-		default:
-			// For other command errors, check if they're transient
-			return isTransientError(cmdErr.Code)
-		}
+		return isRetryableCommandError(&cmdErr)
 	}
 
-	// Check for bulk write exceptions
+	// Check bulk write exceptions
 	if bulkErr, ok := err.(mongo.BulkWriteException); ok {
-		// If there are write errors, check if any are retryable
-		for _, writeErr := range bulkErr.WriteErrors {
-			if !isTransientError(int32(writeErr.Code)) {
-				return false // If any error is not retryable, don't retry the batch
-			}
-		}
-		return len(bulkErr.WriteErrors) > 0 // Retry if all errors were transient
+		return isRetryableBulkWriteError(bulkErr)
 	}
 
 	return false
+}
+
+// isBasicRetryableError checks for basic retryable MongoDB errors
+func isBasicRetryableError(err error) bool {
+	return mongo.IsTimeout(err) || mongo.IsNetworkError(err)
+}
+
+// isRetryableCommandError checks if a command error is retryable
+func isRetryableCommandError(cmdErr *mongo.CommandError) bool {
+	switch cmdErr.Code {
+	case 112: // WriteConflict
+		return true
+	case 11000, 11001: // DuplicateKey errors
+		return false
+	default:
+		return isTransientError(cmdErr.Code)
+	}
+}
+
+// isRetryableBulkWriteError checks if a bulk write error is retryable
+func isRetryableBulkWriteError(bulkErr mongo.BulkWriteException) bool {
+	if len(bulkErr.WriteErrors) == 0 {
+		return false
+	}
+
+	// All errors must be transient for the batch to be retryable
+	for _, writeErr := range bulkErr.WriteErrors {
+		if !isTransientError(int32(writeErr.Code)) {
+			return false
+		}
+	}
+	return true
 }
 
 // isTransientError checks if a MongoDB error code represents a transient error
