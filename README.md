@@ -8,6 +8,8 @@ A Go-based CLI tool for MongoDB operations.
 
 - Copying data between MongoDB clusters with all indexes
 - Comparing data between MongoDB clusters to identify differences
+- Creating incremental database dumps using mongodump
+- Restoring databases from dumps using mongorestore
 - Incremental copying to only transfer new or updated documents
 - Include or exclude specific databases and collections
 - Adjustable batch size for optimized performance
@@ -59,6 +61,61 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--config`: Path to configuration file
 - `--save-config`: Save current flags to configuration file
 - `--config-format`: Configuration file format for saving (json, yaml, or toml)
+
+### Dump Command
+
+Create incremental dumps of MongoDB databases using the mongodump CLI tool:
+
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps
+```
+
+#### Options
+
+- `--source`: Source MongoDB connection string (required)
+- `--source-ca-cert-file`: Path to CA certificate file for source MongoDB TLS connections
+- `--output`: Output directory for dump files (default: "./dumps")
+- `--incremental`: Perform incremental dump (only dump new or updated documents)
+- `--timeout`: Connection timeout in seconds (default: 30)
+- `--databases`: List of specific databases to dump (default: all non-system databases)
+- `--collections`: List of specific collections to dump (default: all non-system collections)
+- `--exclude-databases`: List of databases to exclude from dump
+- `--exclude-collections`: List of collections to exclude from dump
+- `--last-modified-field`: Field name to use for tracking document modifications in incremental dump (default: "lastModified")
+- `--retry-attempts`: Number of retry attempts for failed operations (default: 5)
+- `--state-file`: Path to state file for tracking dump progress (defaults to `<output>/dump-state.json`)
+- `--config`: Path to configuration file
+- `--save-config`: Save current flags to configuration file
+
+**Note**: The dump command requires the `mongodump` CLI tool to be installed and available in your PATH.
+
+### Restore Command
+
+Restore MongoDB databases from dumps created by the dump command using the mongorestore CLI tool:
+
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps
+```
+
+#### Options
+
+- `--target`: Target MongoDB connection string (required)
+- `--target-ca-cert-file`: Path to CA certificate file for target MongoDB TLS connections
+- `--input`: Input directory containing dump files (default: "./dumps")
+- `--timeout`: Connection timeout in seconds (default: 30)
+- `--databases`: List of specific databases to restore (default: all found in dumps)
+- `--collections`: List of specific collections to restore (default: all found in dumps)
+- `--exclude-databases`: List of databases to exclude from restore
+- `--exclude-collections`: List of collections to exclude from restore
+- `--retry-attempts`: Number of retry attempts for failed operations (default: 5)
+- `--state-file`: Path to state file for tracking restore progress (defaults to `<input>/restore-state.json`)
+- `--drop`: Drop collections before restoring (default: false)
+- `--oplog-replay`: Replay oplog after restoring (default: false)
+- `--preserve-dates`: Preserve original document timestamps (default: true)
+- `--config`: Path to configuration file
+- `--save-config`: Save current flags to configuration file
+
+**Note**: The restore command requires the `mongorestore` CLI tool to be installed and available in your PATH.
 
 ### Compare Command
 
@@ -181,6 +238,75 @@ nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-h
 Save comparison results to a file:
 ```bash
 nmongo compare --source "mongodb://source-host:27017" --target "mongodb://dest-host:27017" --output="comparison.json"
+```
+
+### Dump Examples
+
+Basic dump of all databases:
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps
+```
+
+Dump specific databases:
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps --databases="db1,db2"
+```
+
+Incremental dump (only new/updated documents since last dump):
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps --incremental
+```
+
+Incremental dump with custom timestamp field:
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps --incremental --last-modified-field="updatedAt"
+```
+
+Dump with custom state file location:
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps --incremental --state-file="/var/lib/nmongo/dump-state.json"
+```
+
+Exclude system databases from dump:
+```bash
+nmongo dump --source "mongodb://source-host:27017" --output ./dumps --exclude-databases="admin,local,config"
+```
+
+### Restore Examples
+
+Basic restore of all databases from dumps:
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps
+```
+
+Restore specific databases:
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --databases="db1,db2"
+```
+
+Restore with drop collections first (clean restore):
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --drop
+```
+
+Restore specific collections:
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --collections="users,products"
+```
+
+Restore with custom state file location:
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --state-file="/var/lib/nmongo/restore-state.json"
+```
+
+Exclude certain databases from restore:
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --exclude-databases="test,staging"
+```
+
+Restore with oplog replay (for point-in-time recovery):
+```bash
+nmongo restore --target "mongodb://target-host:27017" --input ./dumps --oplog-replay
 ```
 
 ## MongoDB Client Configuration
