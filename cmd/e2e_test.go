@@ -321,6 +321,7 @@ func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
 	dumpOutputDir = tmpDir
 	dumpDatabases = []string{}
 	dumpCollections = []string{}
+	dumpSourceCACertFile = ""
 
 	// Execute dump command
 	err = runDump()
@@ -331,6 +332,7 @@ func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
 	restoreInputDir = tmpDir
 	restoreDatabases = []string{}
 	restoreCollections = []string{}
+	restoreTargetCACertFile = ""
 
 	// Execute restore command
 	err = runRestore()
