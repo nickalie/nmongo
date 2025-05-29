@@ -338,12 +338,12 @@ func dumpCollection(ctx context.Context, sourceClient *mongodb.Client, dbName, c
 		return err
 	}
 
-	outputPath := filepath.Join(dumpOutputDir, dbName, collName)
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	// Ensure the base output directory exists
+	if err := os.MkdirAll(dumpOutputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	if err := executeDumpWithRetry(dbName, collName, outputPath, query); err != nil {
+	if err := executeDumpWithRetry(dbName, collName, dumpOutputDir, query); err != nil {
 		return err
 	}
 

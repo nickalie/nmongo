@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -322,10 +323,27 @@ func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
 	dumpDatabases = []string{}
 	dumpCollections = []string{}
 	dumpSourceCACertFile = ""
+	dumpExcludeDatabases = []string{}
+	dumpExcludeCollections = []string{}
+	dumpIncremental = false
 
 	// Execute dump command
 	err = runDump()
 	require.NoError(t, err)
+
+	// Debug: List dump directory contents
+	entries, err := os.ReadDir(tmpDir)
+	require.NoError(t, err)
+	t.Logf("Dump directory contents:")
+	for _, entry := range entries {
+		t.Logf("  - %s (dir: %v)", entry.Name(), entry.IsDir())
+		if entry.IsDir() {
+			subEntries, _ := os.ReadDir(filepath.Join(tmpDir, entry.Name()))
+			for _, subEntry := range subEntries {
+				t.Logf("    - %s", subEntry.Name())
+			}
+		}
+	}
 
 	// Set restore command variables
 	restoreTargetURI = tgtURI
@@ -333,6 +351,9 @@ func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
 	restoreDatabases = []string{}
 	restoreCollections = []string{}
 	restoreTargetCACertFile = ""
+	restoreExcludeDatabases = []string{}
+	restoreExcludeCollections = []string{}
+	restoreDrop = false
 
 	// Execute restore command
 	err = runRestore()
@@ -369,6 +390,8 @@ func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Running restore command again to sync new documents...")
+	// Set drop flag to true for the second restore to replace existing data
+	restoreDrop = true
 	err = runRestore()
 	require.NoError(t, err)
 

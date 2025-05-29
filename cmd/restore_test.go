@@ -82,7 +82,7 @@ func TestBuildMongorestoreArgs(t *testing.T) {
 			name:     "BasicArgs",
 			dbName:   "testdb",
 			collName: "testcoll",
-			collPath: "/tmp/restore/testdb/testcoll",
+			collPath: filepath.Join(os.TempDir(), "restore", "testdb", "testcoll"),
 			setupFunc: func() {
 				restoreTargetURI = "mongodb://localhost:27017"
 				restoreTargetCACertFile = ""
@@ -94,17 +94,17 @@ func TestBuildMongorestoreArgs(t *testing.T) {
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--dir", "/tmp/restore/testdb/testcoll",
+				filepath.Join(os.TempDir(), "restore", "testdb", "testcoll", "testcoll.bson"),
 			},
 		},
 		{
 			name:     "WithAllOptions",
 			dbName:   "testdb",
 			collName: "testcoll",
-			collPath: "/tmp/restore/testdb/testcoll",
+			collPath: filepath.Join(os.TempDir(), "restore", "testdb", "testcoll"),
 			setupFunc: func() {
 				restoreTargetURI = "mongodb://localhost:27017"
-				restoreTargetCACertFile = "/path/to/ca.pem"
+				restoreTargetCACertFile = filepath.Join("path", "to", "ca.pem")
 				restoreDrop = true
 				restoreOplogReplay = true
 				restorePreserveDates = true
@@ -113,8 +113,8 @@ func TestBuildMongorestoreArgs(t *testing.T) {
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--dir", "/tmp/restore/testdb/testcoll",
-				"--sslCAFile", "/path/to/ca.pem",
+				filepath.Join(os.TempDir(), "restore", "testdb", "testcoll", "testcoll.bson"),
+				"--sslCAFile", filepath.Join("path", "to", "ca.pem"),
 				"--drop",
 				"--oplogReplay",
 				"--maintainInsertionOrder",
@@ -124,10 +124,10 @@ func TestBuildMongorestoreArgs(t *testing.T) {
 			name:     "WithCAFileOnly",
 			dbName:   "testdb",
 			collName: "testcoll",
-			collPath: "/tmp/restore/testdb/testcoll",
+			collPath: filepath.Join(os.TempDir(), "restore", "testdb", "testcoll"),
 			setupFunc: func() {
 				restoreTargetURI = "mongodb://localhost:27017"
-				restoreTargetCACertFile = "/path/to/ca.pem"
+				restoreTargetCACertFile = filepath.Join("path", "to", "ca.pem")
 				restoreDrop = false
 				restoreOplogReplay = false
 				restorePreserveDates = false
@@ -136,8 +136,8 @@ func TestBuildMongorestoreArgs(t *testing.T) {
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--dir", "/tmp/restore/testdb/testcoll",
-				"--sslCAFile", "/path/to/ca.pem",
+				filepath.Join(os.TempDir(), "restore", "testdb", "testcoll", "testcoll.bson"),
+				"--sslCAFile", filepath.Join("path", "to", "ca.pem"),
 			},
 		},
 	}
@@ -279,13 +279,15 @@ func TestGetCollectionsFromDump(t *testing.T) {
 		originalCollections := restoreCollections
 		defer func() { restoreCollections = originalCollections }()
 
-		// Create mock collection structure
+		// Create mock collection structure with BSON files
 		dbPath := filepath.Join(tempDir, "testdb")
-		os.MkdirAll(filepath.Join(dbPath, "users"), 0755)
-		os.MkdirAll(filepath.Join(dbPath, "products"), 0755)
-		os.MkdirAll(filepath.Join(dbPath, "orders"), 0755)
-		// Create a file that should be ignored
+		os.MkdirAll(dbPath, 0755)
+		os.WriteFile(filepath.Join(dbPath, "users.bson"), []byte(""), 0644)
+		os.WriteFile(filepath.Join(dbPath, "products.bson"), []byte(""), 0644)
+		os.WriteFile(filepath.Join(dbPath, "orders.bson"), []byte(""), 0644)
+		// Create files that should be ignored
 		os.WriteFile(filepath.Join(dbPath, "metadata.json"), []byte("{}"), 0644)
+		os.WriteFile(filepath.Join(dbPath, "oplog.bson"), []byte(""), 0644)
 
 		restoreCollections = []string{} // Use all found collections
 
@@ -294,8 +296,9 @@ func TestGetCollectionsFromDump(t *testing.T) {
 		assert.Contains(t, collections, "users")
 		assert.Contains(t, collections, "products")
 		assert.Contains(t, collections, "orders")
-		// Files should not be included, only directories
+		// Non-BSON files and special files should not be included
 		assert.NotContains(t, collections, "metadata.json")
+		assert.NotContains(t, collections, "oplog")
 	})
 
 	t.Run("NonExistentDirectory", func(t *testing.T) {
@@ -351,7 +354,7 @@ func TestLogRestoreConfiguration(t *testing.T) {
 	}()
 
 	restoreTargetURI = "mongodb://test:27017"
-	restoreInputDir = "/tmp/dumps"
+	restoreInputDir = filepath.Join(os.TempDir(), "dumps")
 	restoreDrop = true
 	restoreDatabases = []string{"db1", "db2"}
 	restoreExcludeDatabases = []string{"admin"}
@@ -403,9 +406,9 @@ func TestGetRestoreStateFilePath(t *testing.T) {
 		}()
 
 		restoreStateFile = ""
-		restoreInputDir = "/tmp/dumps"
+		restoreInputDir = filepath.Join(os.TempDir(), "dumps")
 		result := getRestoreStateFilePath()
-		assert.Equal(t, "/tmp/dumps/restore-state.json", result)
+		assert.Equal(t, filepath.Join(os.TempDir(), "dumps", "restore-state.json"), result)
 	})
 }
 
@@ -578,8 +581,8 @@ func TestBuildMongorestoreArgsWithMinimalOptions(t *testing.T) {
 	assert.Contains(t, args, "mydb")
 	assert.Contains(t, args, "--collection")
 	assert.Contains(t, args, "mycoll")
-	assert.Contains(t, args, "--dir")
-	assert.Contains(t, args, "/backup/restore")
+	// Now we pass the BSON file path directly
+	assert.Contains(t, args, "/backup/restore/mycoll.bson")
 
 	// These should not be present when disabled
 	assert.NotContains(t, args, "--drop")

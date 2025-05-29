@@ -120,7 +120,7 @@ func TestBuildMongodumpArgs(t *testing.T) {
 			name:       "BasicArgs",
 			dbName:     "testdb",
 			collName:   "testcoll",
-			outputPath: "/tmp/dump",
+			outputPath: filepath.Join(os.TempDir(), "dump"),
 			query:      "",
 			setupFunc: func() {
 				dumpSourceURI = "mongodb://localhost:27017"
@@ -130,14 +130,14 @@ func TestBuildMongodumpArgs(t *testing.T) {
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--out", "/tmp/dump",
+				"--out", filepath.Join(os.TempDir(), "dump"),
 			},
 		},
 		{
 			name:       "WithQuery",
 			dbName:     "testdb",
 			collName:   "testcoll",
-			outputPath: "/tmp/dump",
+			outputPath: filepath.Join(os.TempDir(), "dump"),
 			query:      `{"lastModified":{"$gt":"2023-01-01"}}`,
 			setupFunc: func() {
 				dumpSourceURI = "mongodb://localhost:27017"
@@ -147,7 +147,7 @@ func TestBuildMongodumpArgs(t *testing.T) {
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--out", "/tmp/dump",
+				"--out", filepath.Join(os.TempDir(), "dump"),
 				"--query", `{"lastModified":{"$gt":"2023-01-01"}}`,
 			},
 		},
@@ -155,18 +155,18 @@ func TestBuildMongodumpArgs(t *testing.T) {
 			name:       "WithCAFile",
 			dbName:     "testdb",
 			collName:   "testcoll",
-			outputPath: "/tmp/dump",
+			outputPath: filepath.Join(os.TempDir(), "dump"),
 			query:      "",
 			setupFunc: func() {
 				dumpSourceURI = "mongodb://localhost:27017"
-				dumpSourceCACertFile = "/path/to/ca.pem"
+				dumpSourceCACertFile = filepath.Join("path", "to", "ca.pem")
 			},
 			expected: []string{
 				"--uri", "mongodb://localhost:27017",
 				"--db", "testdb",
 				"--collection", "testcoll",
-				"--out", "/tmp/dump",
-				"--sslCAFile", "/path/to/ca.pem",
+				"--out", filepath.Join(os.TempDir(), "dump"),
+				"--sslCAFile", filepath.Join("path", "to", "ca.pem"),
 			},
 		},
 	}
@@ -294,7 +294,7 @@ func TestLogDumpConfiguration(t *testing.T) {
 	}()
 
 	dumpSourceURI = "mongodb://test:27017"
-	dumpOutputDir = "/tmp/dumps"
+	dumpOutputDir = filepath.Join(os.TempDir(), "dumps")
 	dumpIncremental = true
 	dumpDatabases = []string{"db1", "db2"}
 	dumpExcludeDatabases = []string{"admin"}

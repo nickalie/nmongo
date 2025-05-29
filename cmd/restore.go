@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -372,8 +373,13 @@ func getCollectionsFromDump(dbPath string) ([]string, error) {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			allCollections = append(allCollections, entry.Name())
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bson") {
+			// Remove .bson extension to get collection name
+			collName := strings.TrimSuffix(entry.Name(), ".bson")
+			// Skip special files like oplog.bson
+			if !isSpecialFile(entry.Name()) {
+				allCollections = append(allCollections, collName)
+			}
 		}
 	}
 
@@ -384,13 +390,16 @@ func getCollectionsFromDump(dbPath string) ([]string, error) {
 func restoreCollection(ctx context.Context, targetClient *mongodb.Client, dbName, collName string, state *RestoreState) error {
 	collKey := fmt.Sprintf("%s.%s", dbName, collName)
 
-	collPath := filepath.Join(restoreInputDir, dbName, collName)
-	if _, err := os.Stat(collPath); os.IsNotExist(err) {
+	// Check if the BSON file exists
+	bsonPath := filepath.Join(restoreInputDir, dbName, collName+".bson")
+	if _, err := os.Stat(bsonPath); os.IsNotExist(err) {
 		fmt.Printf("      Skipping collection %s.%s (no dump found)\n", dbName, collName)
 		return nil
 	}
 
-	if err := executeRestoreWithRetry(dbName, collName, collPath); err != nil {
+	// For mongorestore, we pass the directory containing the BSON files
+	dbPath := filepath.Join(restoreInputDir, dbName)
+	if err := executeRestoreWithRetry(dbName, collName, dbPath); err != nil {
 		return err
 	}
 
@@ -422,11 +431,13 @@ func executeRestoreWithRetry(dbName, collName, collPath string) error {
 }
 
 func buildMongorestoreArgs(dbName, collName, collPath string) []string {
+	// When restoring a specific collection, pass the BSON file path directly
+	bsonPath := filepath.Join(collPath, collName+".bson")
 	args := []string{
 		"--uri", restoreTargetURI,
 		"--db", dbName,
 		"--collection", collName,
-		"--dir", collPath,
+		bsonPath,
 	}
 
 	if restoreTargetCACertFile != "" {
