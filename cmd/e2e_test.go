@@ -272,3 +272,106 @@ func seedAdditionalDocuments(ctx context.Context, uri string) error {
 
 	return nil
 }
+
+func TestEndToEndDumpRestoreAndCompare(t *testing.T) {
+	ctx := context.Background()
+
+	// Reset command state
+	configFile = ""
+
+	// Start source MongoDB container
+	sourceContainer, err := mongodb.Run(ctx, "mongo:8.0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := sourceContainer.Terminate(ctx); err != nil {
+			t.Fatalf("failed to terminate source container: %s", err)
+		}
+	})
+
+	srcURI, err := sourceContainer.ConnectionString(ctx)
+	require.NoError(t, err)
+
+	// Start target MongoDB container
+	targetContainer, err := mongodb.Run(ctx, "mongo:8.0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := targetContainer.Terminate(ctx); err != nil {
+			t.Fatalf("failed to terminate target container: %s", err)
+		}
+	})
+
+	tgtURI, err := targetContainer.ConnectionString(ctx)
+	require.NoError(t, err)
+
+	// Seed source MongoDB with random data
+	err = seedMongoDB(ctx, srcURI)
+	require.NoError(t, err)
+
+	// Create temp directory for dump files
+	tmpDir, err := os.MkdirTemp("", "nmongo-dump-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	t.Logf("Created temp directory at: %s", tmpDir)
+	t.Logf("Source URI: %s", srcURI)
+	t.Logf("Target URI: %s", tgtURI)
+
+	// Set dump command variables
+	dumpSourceURI = srcURI
+	dumpOutputDir = tmpDir
+	dumpDatabases = []string{}
+	dumpCollections = []string{}
+
+	// Execute dump command
+	err = runDump()
+	require.NoError(t, err)
+
+	// Set restore command variables
+	restoreTargetURI = tgtURI
+	restoreInputDir = tmpDir
+	restoreDatabases = []string{}
+	restoreCollections = []string{}
+
+	// Execute restore command
+	err = runRestore()
+	require.NoError(t, err)
+
+	// Set compare command variables
+	compareSourceURI = srcURI
+	compareTargetURI = tgtURI
+	compareDatabases = []string{}
+	compareCollections = []string{}
+
+	// Execute compare command
+	err = runCompare()
+	require.NoError(t, err)
+
+	// Verify that there are no differences
+	// The compare command should exit with no error if databases are identical
+	assert.NoError(t, err, "Compare command should find no differences between source and target")
+
+	// Step 1: Add more random documents to source database
+	t.Log("Adding additional documents to source database...")
+	err = seedAdditionalDocuments(ctx, srcURI)
+	require.NoError(t, err)
+
+	// Step 2: Compare again - there should be differences now
+	t.Log("Comparing after adding new documents - expecting differences...")
+	err = runCompare()
+	// Compare should return an error when differences are found
+	require.Error(t, err, "Compare command should find differences after adding new documents")
+
+	// Step 3: Run dump and restore commands again to sync the new documents
+	t.Log("Running dump command again to capture new documents...")
+	err = runDump()
+	require.NoError(t, err)
+
+	t.Log("Running restore command again to sync new documents...")
+	err = runRestore()
+	require.NoError(t, err)
+
+	// Step 4: Compare again - there should be no differences now
+	t.Log("Comparing after second dump/restore - expecting no differences...")
+	err = runCompare()
+	require.NoError(t, err, "Compare command should find no differences after syncing")
+}
