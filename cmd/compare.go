@@ -184,13 +184,17 @@ func runCompare() error {
 	}
 
 	// Summarize the comparison results
-	summarizeResults(allResults)
+	hasDifferences := summarizeResults(allResults)
 
 	// Write results to output file if specified
 	if compareOutputFile != "" {
 		if err := writeResultsToFile(allResults, compareOutputFile); err != nil {
 			return fmt.Errorf("failed to write results to file: %w", err)
 		}
+	}
+
+	if hasDifferences {
+		return fmt.Errorf("differences found between source and target databases")
 	}
 
 	fmt.Println("MongoDB comparison completed successfully")
@@ -375,7 +379,8 @@ func compareCollectionIndexes(
 
 // summarizeResults displays a summary of the comparison results
 // This has been refactored to reduce cyclomatic complexity
-func summarizeResults(results []*mongodb.ComparisonResult) {
+// Returns true if differences were found
+func summarizeResults(results []*mongodb.ComparisonResult) bool {
 	// Calculate summary statistics
 	stats := calculateComparisonStats(results)
 
@@ -397,6 +402,8 @@ func summarizeResults(results []*mongodb.ComparisonResult) {
 	if stats.collectionsWithDifferences > 0 {
 		displayDifferences(results)
 	}
+
+	return stats.collectionsWithDifferences > 0
 }
 
 // comparisonStats holds summary statistics for comparison results

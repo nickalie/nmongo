@@ -74,6 +74,8 @@ func TestEndToEndCopyAndCompare(t *testing.T) {
 	targetURI = cfg.TargetURI
 	databases = cfg.Databases
 	collections = cfg.Collections
+	incremental = cfg.Incremental
+	lastModifiedField = cfg.LastModifiedField
 
 	// Execute copy command
 	err = runCopy()
@@ -92,6 +94,27 @@ func TestEndToEndCopyAndCompare(t *testing.T) {
 	// Verify that there are no differences
 	// The compare command should exit with no error if databases are identical
 	assert.NoError(t, err, "Compare command should find no differences between source and target")
+
+	// Step 1: Add more random documents to source database
+	t.Log("Adding additional documents to source database...")
+	err = seedAdditionalDocuments(ctx, srcURI)
+	require.NoError(t, err)
+
+	// Step 2: Compare again - there should be differences now
+	t.Log("Comparing after adding new documents - expecting differences...")
+	err = runCompare()
+	// Compare should return an error when differences are found
+	require.Error(t, err, "Compare command should find differences after adding new documents")
+
+	// Step 3: Run copy command again to sync the new documents
+	t.Log("Running copy command again to sync new documents...")
+	err = runCopy()
+	require.NoError(t, err)
+
+	// Step 4: Compare again - there should be no differences now
+	t.Log("Comparing after second copy - expecting no differences...")
+	err = runCompare()
+	require.NoError(t, err, "Compare command should find no differences after syncing")
 }
 
 func seedMongoDB(ctx context.Context, uri string) error {
@@ -101,19 +124,19 @@ func seedMongoDB(ctx context.Context, uri string) error {
 	}
 	defer client.Disconnect(ctx)
 
-	// Seed with 10 databases
-	for dbIdx := 0; dbIdx < 10; dbIdx++ {
+	// Seed with 2 databases (reduced for faster tests)
+	for dbIdx := 0; dbIdx < 2; dbIdx++ {
 		dbName := fmt.Sprintf("testdb_%d", dbIdx)
 		db := client.Database(dbName)
 
-		// Create 10 collections per database
-		for colIdx := 0; colIdx < 10; colIdx++ {
+		// Create 3 collections per database (reduced for faster tests)
+		for colIdx := 0; colIdx < 3; colIdx++ {
 			colName := fmt.Sprintf("collection_%d", colIdx)
 			collection := db.Collection(colName)
 
-			// Insert 10,000 documents per collection
-			documents := make([]interface{}, 10000)
-			for docIdx := 0; docIdx < 10000; docIdx++ {
+			// Insert 100 documents per collection (reduced for faster tests)
+			documents := make([]interface{}, 100)
+			for docIdx := 0; docIdx < 100; docIdx++ {
 				documents[docIdx] = generateRandomDocument(dbIdx, colIdx, docIdx)
 			}
 
@@ -194,6 +217,8 @@ func createTempConfigFile(sourceURI, targetURI string) (string, error) {
 targetUri: "%s"
 databases: []
 collections: []
+incremental: true
+lastModifiedField: "lastModified"
 `, sourceURI, targetURI)
 
 	tmpFile, err := os.CreateTemp("", "nmongo-test-config-*.yaml")
@@ -213,4 +238,37 @@ collections: []
 	}
 
 	return tmpFile.Name(), nil
+}
+
+func seedAdditionalDocuments(ctx context.Context, uri string) error {
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	if err != nil {
+		return fmt.Errorf("failed to connect to MongoDB: %w", err)
+	}
+	defer client.Disconnect(ctx)
+
+	// Add 5 more documents to each collection
+	for dbIdx := 0; dbIdx < 2; dbIdx++ {
+		dbName := fmt.Sprintf("testdb_%d", dbIdx)
+		db := client.Database(dbName)
+
+		for colIdx := 0; colIdx < 3; colIdx++ {
+			colName := fmt.Sprintf("collection_%d", colIdx)
+			collection := db.Collection(colName)
+
+			// Insert 5 additional documents per collection
+			documents := make([]interface{}, 5)
+			for docIdx := 0; docIdx < 5; docIdx++ {
+				// Use high docIndex values to ensure they're new documents
+				documents[docIdx] = generateRandomDocument(dbIdx, colIdx, 100+docIdx)
+			}
+
+			_, err := collection.InsertMany(ctx, documents)
+			if err != nil {
+				return fmt.Errorf("failed to insert additional documents: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
