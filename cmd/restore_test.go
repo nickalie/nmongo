@@ -581,8 +581,9 @@ func TestBuildMongorestoreArgsWithMinimalOptions(t *testing.T) {
 	assert.Contains(t, args, "mydb")
 	assert.Contains(t, args, "--collection")
 	assert.Contains(t, args, "mycoll")
-	// Now we pass the BSON file path directly
-	assert.Contains(t, args, "/backup/restore/mycoll.bson")
+	// Now we pass the BSON file path directly - use filepath.Join for cross-platform compatibility
+	expectedBSONPath := filepath.Join("/backup/restore", "mycoll.bson")
+	assert.Contains(t, args, expectedBSONPath)
 
 	// These should not be present when disabled
 	assert.NotContains(t, args, "--drop")

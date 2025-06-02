@@ -55,7 +55,7 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--collections`: List of specific collections to copy (default: all non-system collections)
 - `--exclude-databases`: List of databases to exclude from copy
 - `--exclude-collections`: List of collections to exclude from copy
-- `--batch-size`: Batch size for document operations (default: 1000)
+- `--batch-size`: Batch size for document operations (default: 10000)
 - `--last-modified-field`: Field name to use for tracking document modifications in incremental copy (default: "lastModified")
 - `--retry-attempts`: Number of retry attempts for failed operations (default: 5)
 - `--config`: Path to configuration file
