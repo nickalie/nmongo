@@ -1,8 +1,14 @@
 .PHONY: build test clean
 
+# Version information
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
+LDFLAGS := -ldflags "-s -w -X nmongo/internal/version.Version=$(VERSION) -X nmongo/internal/version.Commit=$(COMMIT) -X nmongo/internal/version.Date=$(DATE)"
+
 # Default build target
 build:
-	go build -o nmongo
+	go build $(LDFLAGS) -o nmongo
 
 # Run tests
 test:
@@ -10,7 +16,7 @@ test:
 
 # Install to GOPATH
 install:
-	go install
+	go install $(LDFLAGS)
 
 # Clean build artifacts
 clean:
@@ -32,6 +38,3 @@ doc:
 	@echo "View documentation at http://localhost:6060/pkg/nmongo/"
 	godoc -http=:6060
 
-# Version info
-version:
-	@echo "nmongo version 0.1.0"

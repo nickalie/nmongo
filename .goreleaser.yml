@@ -31,7 +31,12 @@ builds:
     flags:
       - -trimpath
     # Set custom ldflags - useful for embedding version info
-    ldflags: "-s -w -X main.revision={{.Tag}}-{{.ShortCommit}}-{{.CommitDate}}"
+    ldflags:
+      - -s -w
+      - -X nmongo/internal/version.Version={{.Version}}
+      - -X nmongo/internal/version.Commit={{.Commit}}
+      - -X nmongo/internal/version.Date={{.Date}}
+      - -X nmongo/internal/version.BuildNumber={{.Env.GITHUB_RUN_NUMBER}}
 
 archives:
   - name_template: >-
