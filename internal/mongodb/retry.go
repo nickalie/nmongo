@@ -108,7 +108,51 @@ func isRetryableError(err error) bool {
 
 // isBasicRetryableError checks for basic retryable MongoDB errors
 func isBasicRetryableError(err error) bool {
-	return mongo.IsTimeout(err) || mongo.IsNetworkError(err)
+	// Check for MongoDB driver errors
+	if mongo.IsTimeout(err) || mongo.IsNetworkError(err) {
+		return true
+	}
+
+	// Check error message for common network issues
+	errMsg := err.Error()
+	networkErrors := []string{
+		"i/o timeout",
+		"connection reset by peer",
+		"broken pipe",
+		"incomplete read of message header",
+		"EOF",
+		"use of closed network connection",
+		"no reachable servers",
+		"connection refused",
+	}
+
+	for _, pattern := range networkErrors {
+		if contains(errMsg, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					len(substr) < len(s) && findSubstring(s, substr)))
+}
+
+// findSubstring finds a substring in a string
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // isRetryableCommandError checks if a command error is retryable

@@ -19,6 +19,7 @@ type Config struct {
 	TargetCACertFile string   `mapstructure:"targetCACertFile" json:"targetCACertFile" yaml:"targetCACertFile" toml:"targetCACertFile"`
 	Incremental      bool     `mapstructure:"incremental" json:"incremental" yaml:"incremental" toml:"incremental"`
 	Timeout          int      `mapstructure:"timeout" json:"timeout" yaml:"timeout" toml:"timeout"`
+	SocketTimeout    int      `mapstructure:"socketTimeout" json:"socketTimeout" yaml:"socketTimeout" toml:"socketTimeout"`
 	Databases        []string `mapstructure:"databases" json:"databases" yaml:"databases" toml:"databases"`
 	Collections      []string `mapstructure:"collections" json:"collections" yaml:"collections" toml:"collections"`
 	ExcludeDatabases []string `mapstructure:"excludeDatabases" json:"excludeDatabases" yaml:"excludeDatabases" toml:"excludeDatabases"`
@@ -38,6 +39,7 @@ func DefaultConfig() *Config {
 		TargetCACertFile:   "",
 		Incremental:        false,
 		Timeout:            30,
+		SocketTimeout:      1800,
 		Databases:          []string{},
 		Collections:        []string{},
 		ExcludeDatabases:   []string{},
@@ -61,6 +63,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	v.SetDefault("targetCACertFile", config.TargetCACertFile)
 	v.SetDefault("incremental", config.Incremental)
 	v.SetDefault("timeout", config.Timeout)
+	v.SetDefault("socketTimeout", config.SocketTimeout)
 	v.SetDefault("databases", config.Databases)
 	v.SetDefault("collections", config.Collections)
 	v.SetDefault("excludeDatabases", config.ExcludeDatabases)
@@ -107,6 +110,7 @@ func SaveConfig(config *Config, filePath string) error {
 	v.Set("targetCACertFile", config.TargetCACertFile)
 	v.Set("incremental", config.Incremental)
 	v.Set("timeout", config.Timeout)
+	v.Set("socketTimeout", config.SocketTimeout)
 	v.Set("databases", config.Databases)
 	v.Set("collections", config.Collections)
 	v.Set("excludeDatabases", config.ExcludeDatabases)

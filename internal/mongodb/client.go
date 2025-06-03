@@ -23,22 +23,32 @@ type Client struct {
 	caCertFile string
 }
 
-// NewClient creates a new MongoDB client wrapper
+// NewClient creates a new MongoDB client wrapper with default socket timeout
 func NewClient(ctx context.Context, uri, caCertFile string) (*Client, error) {
+	return NewClientWithSocketTimeout(ctx, uri, caCertFile, 1800) // Default 30 minutes
+}
+
+// NewClientWithSocketTimeout creates a new MongoDB client wrapper with configurable socket timeout
+func NewClientWithSocketTimeout(ctx context.Context, uri, caCertFile string, socketTimeoutSeconds int) (*Client, error) {
 	clientOptions := options.Client().ApplyURI(uri)
 
 	// Configure connection timeouts
 	clientOptions.SetConnectTimeout(60 * time.Second)
 	clientOptions.SetServerSelectionTimeout(60 * time.Second)
 
-	// Set socket timeout to a higher value (5 minutes) to prevent timeouts during data transfer
-	clientOptions.SetSocketTimeout(5 * time.Minute)
+	// Set socket timeout based on provided value
+	socketTimeout := time.Duration(socketTimeoutSeconds) * time.Second
+	clientOptions.SetSocketTimeout(socketTimeout)
 
 	// Configure other MongoDB client parameters for better stability
 	clientOptions.SetMaxConnIdleTime(30 * time.Minute)
 	clientOptions.SetMaxPoolSize(100)                    // Increase connection pool size
 	clientOptions.SetMinPoolSize(10)                     // Ensure minimum number of connections
 	clientOptions.SetHeartbeatInterval(10 * time.Second) // More frequent server monitoring
+
+	// Enable retryable reads and writes
+	clientOptions.SetRetryReads(true)
+	clientOptions.SetRetryWrites(true)
 
 	// If a CA certificate file is provided, configure TLS
 	if caCertFile != "" {
@@ -236,13 +246,29 @@ func prepareFilterWithTarget(
 	return filter, nil
 }
 
-// createCursor creates a cursor for the source collection
+// createCursor creates a cursor for the source collection with retry logic
 func createCursor(ctx context.Context, sourceColl *mongo.Collection, filter bson.M, batchSize int) (*mongo.Cursor, error) {
-	findOptions := options.Find().SetBatchSize(int32(batchSize))
-	cursor, err := sourceColl.Find(ctx, filter, findOptions)
+	findOptions := options.Find().
+		SetBatchSize(int32(batchSize)).
+		SetNoCursorTimeout(true) // Prevent cursor timeout on server side
+
+	var cursor *mongo.Cursor
+	var err error
+
+	// Retry cursor creation with backoff
+	operation := "Create cursor for collection query"
+	err = RetryWithBackoff(ctx, 5, operation, func() error {
+		cursor, err = sourceColl.Find(ctx, filter, findOptions)
+		if err != nil {
+			return fmt.Errorf("failed to query source collection: %w", err)
+		}
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to query source collection: %w", err)
+		return nil, err
 	}
+
 	return cursor, nil
 }
 

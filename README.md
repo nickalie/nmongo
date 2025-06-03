@@ -50,7 +50,8 @@ nmongo copy --source "mongodb://source-host:27017" --target "mongodb://dest-host
 - `--source-ca-cert-file`: Path to CA certificate file for source MongoDB TLS connections
 - `--target-ca-cert-file`: Path to CA certificate file for target MongoDB TLS connections
 - `--incremental`: Perform incremental copy (only copy new or updated documents)
-- `--timeout`: Connection timeout in seconds (default: 120)
+- `--timeout`: Connection timeout in seconds (default: 30)
+- `--socket-timeout`: Socket timeout in seconds for data operations (default: 1800 / 30 minutes)
 - `--databases`: List of specific databases to copy (default: all non-system databases)
 - `--collections`: List of specific collections to copy (default: all non-system collections)
 - `--exclude-databases`: List of databases to exclude from copy
@@ -360,21 +361,24 @@ nmongo copy --source "mongodb://user:password@your-cluster.mongodb.net:27018/" \
 
 The application has an enhanced timeout system:
 
-1. **Connection Timeout**: Controlled by the `--timeout` flag and only applies to the initial connection
-2. **Operation Timeouts**: Longer timeouts are automatically used for data operations:
-   - 30 minutes for data cursors 
+1. **Connection Timeout**: Controlled by the `--timeout` flag and only applies to the initial connection (default: 30 seconds)
+2. **Socket Timeout**: Controlled by the `--socket-timeout` flag for data operations (default: 1800 seconds / 30 minutes)
+3. **Operation Timeouts**: Additional timeouts are automatically configured:
+   - No cursor timeout on server side to prevent cursor expiration
+   - Retryable reads and writes are enabled by default
    - 5 minutes for index operations
-   - 5 minutes for socket timeouts
 
-Example of setting the connection timeout:
+Example of setting timeouts:
 
 ```bash
+# For environments with slow networks, increase socket timeout
 nmongo copy --source "mongodb://user:password@your-mongodb-host:27018/" \
             --target "mongodb://localhost:27017" \
-            --timeout 60
+            --timeout 60 \
+            --socket-timeout 3600  # 1 hour socket timeout
 ```
 
-For large databases that were failing with timeout errors, you should no longer need to increase the timeout value since data operations now use separate, longer timeouts automatically.
+For large databases or slow networks that were failing with "incomplete read of message header" errors, you can increase the socket timeout to prevent I/O timeout errors during data transfer.
 
 #### Progress Updates
 
