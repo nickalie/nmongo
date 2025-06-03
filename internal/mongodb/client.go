@@ -159,13 +159,7 @@ func CopyCollection(
 	// Get source and target collections
 	sourceColl := sourceDB.Collection(collName)
 	targetColl := targetDB.Collection(collName)
-
-	// Use a longer timeout for operations within the collection copy process
-	// This is crucial for large collections that take time to process
-	// Default to 30 minutes for cursor operations
-	cursorTimeout := 30 * time.Minute
-	opCtx, cancel := context.WithTimeout(context.Background(), cursorTimeout)
-	defer cancel()
+	opCtx := context.Background()
 
 	// Update to use both source and target clients for incremental copy
 	filter, err := prepareFilterWithTarget(opCtx, sourceDB, targetDB, collName, incremental, lastModifiedField)
@@ -187,8 +181,8 @@ func CopyCollection(
 
 	// Copy indexes from source to target collection
 	// Use a separate context for index operations
-	indexCtx, indexCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer indexCancel()
+	indexCtx := context.Background()
+
 	if err := CopyCollectionIndexes(indexCtx, sourceDB, targetDB, collName); err != nil {
 		fmt.Printf("  Warning: Failed to copy indexes for collection %s: %v\n", collName, err)
 		// Continue even if indexes copy fails - at least the data was copied
